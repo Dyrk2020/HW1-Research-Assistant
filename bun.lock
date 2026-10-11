@@ -1,0 +1,34 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "hw1-research-assistant-mvp",
+      "dependencies": {
+        "@oh-my-pi/pi-natives": "^18.8.9",
+        "@pdfrx/viewer": "^0.27.0",
+      },
+    },
+  },
+  "packages": {
+    "@oh-my-pi/pi-natives": ["@oh-my-pi/pi-natives@18.8.9", "", { "optionalDependencies": { "@oh-my-pi/pi-natives-darwin-arm64": "18.8.9", "@oh-my-pi/pi-natives-darwin-x64": "18.8.9", "@oh-my-pi/pi-natives-linux-arm64": "18.8.9", "@oh-my-pi/pi-natives-linux-x64": "18.8.9", "@oh-my-pi/pi-natives-win32-arm64": "18.8.9", "@oh-my-pi/pi-natives-win32-x64": "18.8.9" } }, "sha512-HK8bTSypCZXQ+btupDF0zQO34V/5uZg3GbRh65O0SQNdgPT+BA/VXE7MpZNdo634+cMUvEluKMScWFPGKAYI7w=="],
+
+    "@oh-my-pi/pi-natives-darwin-arm64": ["@oh-my-pi/pi-natives-darwin-arm64@18.8.9", "", { "os": "darwin", "cpu": "arm64" }, "sha512-hCzbTfxpMkqw1shzlOxe/RPSxAQ9hYh0GyQRj/DX6s8HqAcFy6B2PVUtII4/NIelNxlWVkUGTx/FGXNnQvJkjQ=="],
+
+    "@oh-my-pi/pi-natives-darwin-x64": ["@oh-my-pi/pi-natives-darwin-x64@18.8.9", "", { "os": "darwin", "cpu": "x64" }, "sha512-SeMGf5Tsexziqe7SrlTrK5m/Y/MIQM3LAnLdOhdRrj6fwYXu8U5vS4zIGWAV74y4oP9UZ+jjaUA17dBsOUe0Ag=="],
+
+    "@oh-my-pi/pi-natives-linux-arm64": ["@oh-my-pi/pi-natives-linux-arm64@18.8.9", "", { "os": "linux", "cpu": "arm64" }, "sha512-xfARj/W2pYKmh1wOQyItWopltw+yM0hAu2O76MFqOvQ48NCL0NuHXh7f+D9+fxPVPhK/4r6rqed53Y2gXZRR2Q=="],
+
+    "@oh-my-pi/pi-natives-linux-x64": ["@oh-my-pi/pi-natives-linux-x64@18.8.9", "", { "os": "linux", "cpu": "x64" }, "sha512-8EtejfmJCAEOKNmsrCl2Kbe4bFZFY7rA5/6s8E7EwaOXRxTQCnzU5qk5mxz50k6q3aKdPGsq/FmfZg2iSwis/Q=="],
+
+    "@oh-my-pi/pi-natives-win32-arm64": ["@oh-my-pi/pi-natives-win32-arm64@18.8.9", "", { "os": "win32", "cpu": "arm64" }, "sha512-2XCvqvmxofdqKBXzf4A1HeLYBQnsPSw03YSg0tv4xHKMegP6et/LVsSeI/jxhBJ/RpaqOrE0EhF1pj6BS+/aUg=="],
+
+    "@oh-my-pi/pi-natives-win32-x64": ["@oh-my-pi/pi-natives-win32-x64@18.8.9", "", { "os": "win32", "cpu": "x64" }, "sha512-fnG10ah3L8USlWHIE/RHVzWxLQZKJdvDdR8u6FVwT1eTSa0ML01KBBuxdy1F9Az5FgnEZ2fOJazHUcuypgHWKw=="],
+
+    "@pdfrx/engine": ["@pdfrx/engine@0.27.0", "", {}, "sha512-nV0QJtVkY4r5HXk9s4hCq8dCmq2jNmsmtBtM9vWCDhwT/WP6VMNAhxsi43L66QuqWUDYHRW9FFau4i0Qa3j+yg=="],
+
+    "@pdfrx/viewer": ["@pdfrx/viewer@0.27.0", "", { "dependencies": { "@pdfrx/engine": "^0.27.0", "@pdfrx/viewer-core": "^0.27.0" } }, "sha512-q4TX/slPC9uEPPShkUYG04EUgczqgk8TOKBYFB/9Rp3t+B6ohEeI8w1gtujgjvdpZSjAOSinflA64Om/exSnHg=="],
+
+    "@pdfrx/viewer-core": ["@pdfrx/viewer-core@0.27.0", "", {}, "sha512-cq/6V/qAtE+UMVP82KvE05p4/W18ErYe2MSz5d0eXN1CMiEm7zISrKQ9NdTuxIVUGeUHDh3OlAKMjkaIfgtQYw=="],
+  }
+}

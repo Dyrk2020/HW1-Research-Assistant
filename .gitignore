@@ -1,0 +1,9 @@
+node_modules/
+papers/
+*.db
+*.db-shm
+*.db-wal
+mvp.log
+nohup.out
+.env
+.DS_Store

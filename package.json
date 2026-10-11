@@ -1,0 +1,13 @@
+{
+  "name": "hw1-research-assistant-mvp",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.ts",
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-natives": "^18.8.9",
+    "@pdfrx/viewer": "^0.27.0"
+  }
+}

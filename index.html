@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HW1 Research Assistant</title>
+<script type="importmap">
+{"imports": {
+  "@pdfrx/viewer": "/pdfrx/viewer/dist/index.js",
+  "@pdfrx/viewer-core": "/pdfrx/viewer-core/dist/index.js",
+  "@pdfrx/engine": "/pdfrx/engine/dist/index.js"
+}}
+</script>
+<style>
+  :root { --bg: #fff; --fg: #1a1a1a; --muted: #5f6368; --border: #e3e5e8; --surface: #f6f7f9; --accent: #0b5fff; --radius: 14px; --shadow: 0 1px 2px #0001, 0 8px 24px -12px #0003; color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); height: 100vh; display: flex; flex-direction: column; font-size: 14px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header { padding: 8px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; overflow: hidden; white-space: nowrap; }
+  header strong { font-size: 14px; }
+  header .status { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  header .status[data-state="loading"] { color: #b26a00; }
+  header .status[data-state="error"] { color: #d33; }
+  main { flex: 1; display: flex; min-height: 0; }
+  /* 3 panes: pick 300px | chat flexible max 560px | pdf rest */
+  #panePick { width: 300px; flex: none; border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  #paneChat { flex: 1 1 0; min-width: 300px; max-width: 560px; margin: 0 auto; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
+  #panePdf { flex: 1.6 1 0; display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+  body.pick-hidden #panePick { display: none; }
+  body.chat-hidden #paneChat { display: none; }
+  body.focus-pdf #panePick, body.focus-pdf #paneChat { display: none; }
+  body.focus-pdf #panePdf { flex: 1 1 auto; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button { flex: 1; padding: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: 10px; cursor: pointer; font-size: 13px; min-height: 32px; }
+  .tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  /* cards: title 14 semibold / meta 12 / badge pill / actions primary-first */
+  .card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg); box-shadow: var(--shadow); content-visibility: auto; contain-intrinsic-size: auto 140px; }
+  .card h4 { margin: 0 0 3px; font-size: 14px; font-weight: 600; line-height: 1.35; }
+  .card .meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+  .card .badge { display: inline-block; font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; margin: 2px 0 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .abs { font-size: 12.5px; color: var(--fg); opacity: .85; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+  .card[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .card .row { display: flex; gap: 6px; margin-top: 8px; }
+  .card button, .card a { font-size: 12px; padding: 5px 12px; min-height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+  .card button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  /* chat: bubbles max 85%, cite = pill (jump), link = blue underline */
+  #msgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 9px 13px; border-radius: 16px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; box-shadow: var(--shadow); }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 5px; }
+  .msg.model { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+  .msg.model.streaming::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--accent); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .msg .cite { display: inline-block; font-size: 11.5px; font-weight: 600; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 6px; padding: 0 5px; margin: 0 1px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .msg .cite:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .msg a.ext { color: var(--accent); text-decoration: underline; word-break: break-all; }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: tp 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: .15s; } .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes tp { 0%,60%,100% { opacity: .25; } 30% { opacity: 1; } }
+  #composer { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  #composer input { flex: 1; padding: 9px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-size: 13px; }
+  #composer button { border-radius: 20px; padding: 8px 16px; min-height: 36px; border: 1px solid var(--border); background: var(--fg); color: var(--bg); cursor: pointer; font-size: 13px; }
+  #composer button:disabled { opacity: .4; }
+  #pdfBar { padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--fg); display: flex; gap: 8px; align-items: center; background: var(--bg); min-height: 44px; }
+  #pdfBar strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  #pdfBar .pages { color: var(--muted); font-size: 12px; flex: none; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; }
+  #pdfBar .tool { flex: none; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: 8px; font-size: 12px; padding: 4px 10px; min-height: 28px; cursor: pointer; }
+  #pdfBar .tool:disabled { opacity: .4; }
+  #pdfWrap { flex: 1; position: relative; background: var(--surface); min-height: 0; border-radius: 0 0 12px 0; overflow: hidden; }
+  #pdfCanvasHost { position: absolute; inset: 0; }
+  #pdfCanvasHost canvas { display: block; }
+  #pdfOverlay { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; color: #ececec; font-size: 13px; pointer-events: auto; text-align: center; padding: 24px; background: radial-gradient(120% 90% at 50% 0%, #4a4e54 0%, #3a3d41 55%, #2f3236 100%); }
+  #pdfOverlay .big { font-size: 34px; }
+  #pdfOverlay .sub { font-size: 12px; opacity: .75; max-width: 340px; line-height: 1.5; }
+  #pdfOverlay button { pointer-events: auto; border-radius: 10px; border: 1px solid #ffffff2e; background: #ffffff14; color: #fff; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+  #errbar { display: none; margin: 8px 10px 0; background: #fdecea; color: #611a15; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+  .hint { font-size: 11px; color: var(--muted); }
+  kbd { border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 11px; }
+  /* demo aids (?demo=1): step caption bar + click ripple */
+  #demoCap { display: none; position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 9999; background: #111; color: #fff; font-size: 14px; padding: 8px 18px; border-radius: 20px; box-shadow: 0 4px 20px #0006; white-space: nowrap; }
+  body.demo #demoCap { display: block; }
+  .click-ripple { position: fixed; z-index: 9998; width: 36px; height: 36px; margin: -18px; border-radius: 50%; border: 3px solid var(--accent); pointer-events: none; animation: ripple .6s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <strong>Research Assistant</strong>
+  <span id="libCount" class="status" data-state="idle"></span>
+  <span id="src" class="status" data-state="idle" style="flex:1"></span>
+  <span class="hint">Ctrl+K search · 1/2/3 panes</span>
+</header>
+<div id="errbar" role="alert"></div>
+<main>
+  <!-- Pane 1: article picker (online + local seamless) -->
+  <section id="panePick" aria-label="articles">
+    <div class="tabs" role="tablist">
+      <button id="tabSearch" aria-selected="true">Search</button>
+      <button id="tabLib" aria-selected="false">Library</button>
+    </div>
+    <div id="searchBox" style="display:flex;gap:6px">
+      <input id="q" type="text" placeholder="topic… (Enter)" value="retrieval augmented generation" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--fg)">
+      <button id="searchBtn" style="border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--fg);cursor:pointer">Go</button>
+    </div>
+    <div>
+      <div class="hint">Add PDF (local file or online URL → same pipeline)</div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <input id="file" type="file" accept="application/pdf" style="flex:1;min-width:0;font-size:11px">
+        <button id="uploadBtn" style="font-size:11px">Upload</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <input id="fetchUrl" type="text" placeholder="https://…pdf" style="flex:1;min-width:0;padding:4px 6px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--fg)">
+        <button id="fetchBtn" style="font-size:11px">Fetch</button>
+      </div>
+      <div id="queueInfo" class="hint"></div>
+    </div>
+    <div id="results" style="display:flex;flex-direction:column;gap:8px"></div>
+  </section>
+  <!-- Pane 2: streaming dialog -->
+  <section id="paneChat" aria-label="dialog">
+    <div id="keybar" style="display:flex;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);min-width:0">
+      <span id="keyStatus" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">llm: …</span>
+      <button id="keyBtn" style="flex:none;font-size:11px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--fg);cursor:pointer">Keys</button>
+    </div>
+    <div id="keyPanel" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px">
+      <div class="hint">Keys live in project <kbd>.env</kbd> (never committed). Restart server after editing. Values are never shown here — only active/inactive.</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <label style="flex:1;min-width:140px">LLM base URL<br><input id="kBase" type="text" placeholder="http://127.0.0.1:8787/v1" style="width:100%"></label>
+        <label style="flex:1;min-width:140px">LLM model<br><input id="kModel" type="text" placeholder="deepseek/deepseek-v4.1-flash" style="width:100%"></label>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <label style="flex:1;min-width:140px">LLM API key (blank = proxy-managed)<br><input id="kLlm" type="password" placeholder="(proxy-managed)" autocomplete="off" style="width:100%"></label>
+        <label style="flex:1;min-width:140px">Exa key (blank = keyless MCP)<br><input id="kExa" type="password" placeholder="(keyless)" autocomplete="off" style="width:100%"></label>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <button id="kSave">Preview .env lines</button>
+        <span class="hint">copies text for you to paste into .env — the page never sends keys anywhere</span>
+      </div>
+      <pre id="kOut" style="white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px;display:none"></pre>
+    </div>
+    <div id="msgs"></div>
+    <div id="composer">
+      <input id="askq" type="text" placeholder="Ask about the paper… (Survey / Read / Compare)" autocomplete="off">
+      <button id="askBtn">Send</button>
+      <button id="stopBtn" disabled>Stop</button>
+    </div>
+  </section>
+  <!-- Pane 3: pdf preview -->
+  <section id="panePdf" aria-label="preview">
+    <div id="pdfBar">
+      <button class="tool" id="pickToggle" title="toggle article list">☰</button>
+      <strong id="paperInfo">Select a paper →</strong>
+      <span class="pages" id="pageInfo" style="display:none"></span>
+      <button class="tool" id="pdfFocus" title="focus reading mode (full width)">⛶</button>
+      <button class="tool" id="pdfOpen" title="open in new tab">↗</button>
+      <button class="tool" id="pdfPrev" title="previous page">‹</button>
+      <button class="tool" id="pdfNext" title="next page">›</button>
+    </div>
+    <div id="pdfWrap">
+      <div id="pdfCanvasHost" style="position:absolute;inset:0"></div>
+      <div id="pdfOverlay">no paper selected</div>
+    </div>
+  </section>
+</main>
+<script>
+'use strict';
+/* State machines: search | library | upload | reader | chat(stream).
+   Chat follows Gemini/MUI-X lifecycle: start → deltas (rAF-batched append,
+   never textContent+=) → finish/abort; typing dots in waiting phase. */
+const S = {
+  search: { state: 'idle', reqId: 0, ctl: null },
+  upload: { state: 'idle' },
+  reader: { state: 'none', paperId: null },
+  chat: { state: 'idle', es: null, queue: [], scheduled: false, chars: 0, bubble: null },
+  selected: null, mode: 'search',
+};
+const MAX_CHARS = 200000, PER_FRAME = 15;
+const $ = (id) => document.getElementById(id);
+const resultsEl = $('results'), msgsEl = $('msgs'), errbar = $('errbar');
+const srcEl = $('src'), overlay = $('pdfOverlay');
+function err(m) { errbar.style.display = m ? 'block' : 'none'; errbar.textContent = m || ''; }
+function setSrc(s, t) { srcEl.dataset.state = s; srcEl.textContent = t; }
+
+/* Plain-text sanitizer: strip markdown/HTML noise before it hits cards or bubbles.
+   LLM returns **bold**, <!-- Page N -->, # headings — none of that is UI. */
+function cleanText(t) {
+  return (t || '')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__([^_]+?)__/g, '$1')
+    .replace(/^#{1,4}\s+/gm, '')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function ellipse(t, n) {
+  const s = (t || '').trim();
+  return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+}
+
+/* ---- pane 1: picker ---- */
+function card(p) {
+  const d = document.createElement('div');
+  d.className = 'card';
+  const isOpen = S.selected && S.selected.id === p.id;
+  if (isOpen) d.setAttribute('aria-current', 'true');
+  const h = document.createElement('h4'); h.textContent = cleanText(p.title) || '(untitled)';
+  const meta = document.createElement('div'); meta.className = 'meta';
+  meta.textContent = `${(p.authors || []).join(', ') || 'unknown authors'} · ${p.year ?? '?'} · ${p.source}`;
+  const badge = document.createElement('div'); badge.className = 'badge';
+  const parts = [];
+  if (p.extractionStatus && p.extractionStatus !== 'not_applicable') parts.push(p.extractionStatus.replace('_', ' '));
+  if (p.pageCount) parts.push(`${p.pageCount}p`);
+  if ((p.pagesWithoutText || []).length) parts.push(`gap p.${(p.pagesWithoutText || []).join(',')}`);
+  if (p._metaMiss) parts.push('meta pending (arXiv rate-limit)');
+  badge.textContent = parts.join(' · ') || p.source;
+  const abs = document.createElement('div'); abs.className = 'abs'; abs.textContent = cleanText(p.abstract);
+  const row = document.createElement('div'); row.className = 'row';
+  const open = document.createElement('button');
+  open.textContent = isOpen ? 'Opened' : 'Open';
+  open.className = 'primary';
+  open.disabled = !!isOpen;
+  open.addEventListener('click', () => select(p));
+  const save = document.createElement('button');
+  const inLib = S.mode === 'library' || p._saved;
+  save.textContent = inLib ? 'Delete' : 'Save';
+  save.addEventListener('click', async () => {
+    save.disabled = true;
+    try {
+      if (inLib) {
+        const r = await fetch(`/api/library/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+        if (!r.ok) throw new Error(r.status);
+        d.remove();
+        $('libCount').textContent = `library(${document.querySelectorAll('.card').length})`;
+      } else {
+        const r = await fetch('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+        if (!r.ok && r.status !== 409) throw new Error(r.status);
+        p._saved = true;
+        save.textContent = 'Saved';
+      }
+    } catch (e) { err(`${inLib ? 'delete' : 'save'} failed: ${e.message}`); save.disabled = false; }
+  });
+  row.append(open, save);
+  if (p.link) {
+    const link = document.createElement('a');
+    link.href = p.link; link.target = '_blank'; link.rel = 'noreferrer';
+    link.textContent = 'open link ↗';
+    row.append(link);
+  }
+  d.append(h, meta, badge, abs, row);
+  return d;
+}
+function mountChunked(items) {
+  resultsEl.innerHTML = ''; err('');
+  if (!items.length) { resultsEl.textContent = 'no results'; return; }
+  let i = 0;
+  // First chunk sync: headless/background tabs throttle rAF, so never wait for it.
+  const frag0 = document.createDocumentFragment();
+  for (let n = 0; n < PER_FRAME && i < items.length; n++, i++) frag0.append(card(items[i]));
+  resultsEl.append(frag0);
+  if (i >= items.length) return;
+  const step = () => {
+    const frag = document.createDocumentFragment();
+    for (let n = 0; n < PER_FRAME && i < items.length; n++, i++) frag.append(card(items[i]));
+    resultsEl.append(frag);
+    if (i < items.length) setTimeout(step, 0);
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(step, 0));
+  else setTimeout(step, 0);
+}
+let searchTimer = 0;
+function doSearch() { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 300); }
+async function runSearch() {
+  const q = $('q').value.trim();
+  if (!q) return;
+  if (S.search.ctl) S.search.ctl.abort();
+  const ctl = new AbortController(), myId = ++S.search.reqId;
+  S.search = { state: 'loading', reqId: myId, ctl };
+  setSrc('loading', 'searching…');
+  try {
+    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctl.signal });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    if (myId !== S.search.reqId) return;
+    S.search.state = 'done';
+    setSrc('idle', (data.sourceStatus || []).map((s) => `${s.source}:${s.status}`).join(' · '));
+    if (data.warnings && data.warnings.length) err('warnings: ' + data.warnings.join('; '));
+    mountChunked(data.papers || []);
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    S.search.state = 'error'; setSrc('error', 'search failed'); err(`search failed: ${e.message}`);
+  }
+}
+async function loadLib() {
+  try {
+    const data = await (await fetch('/api/library')).json();
+    $('libCount').textContent = `library(${(data.papers || []).length})`;
+    setSrc('idle', '');
+    mountChunked(data.papers || []);
+  } catch (e) { err(`library failed: ${e.message}`); }
+}
+function setMode(m) {
+  S.mode = m;
+  $('tabSearch').setAttribute('aria-selected', m === 'search');
+  $('tabLib').setAttribute('aria-selected', m === 'library');
+  $('searchBox').style.display = m === 'search' ? 'flex' : 'none';
+  if (m === 'search') runSearch(); else loadLib();
+}
+async function doUpload() {
+  const f = $('file').files[0];
+  if (!f) { err('pick a pdf first'); return; }
+  if (S.upload.state === 'uploading') return;
+  S.upload.state = 'uploading'; $('uploadBtn').disabled = true;
+  try {
+    const fd = new FormData(); fd.append('file', f);
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    $('queueInfo').textContent = data.queue ? `parse ${data.queue.active}/${data.queue.concurrency}` : '';
+    S.upload.state = 'done';
+    select(data.paper); setMode('library');
+  } catch (e) { S.upload.state = 'error'; err(`upload failed: ${e.message}`); }
+  finally { $('uploadBtn').disabled = false; if (S.upload.state === 'done') S.upload.state = 'idle'; }
+}
+async function doFetch() {
+  const url = $('fetchUrl').value.trim();
+  if (!url) { err('paste a pdf url first'); return; }
+  $('fetchBtn').disabled = true;
+  try {
+    const r = await fetch('/api/fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.status);
+    if (data.metaMiss) data.paper._metaMiss = true;
+    select(data.paper); setMode('library');
+  } catch (e) { err(`fetch failed: ${e.message}`); }
+  finally { $('fetchBtn').disabled = false; }
+}
+
+/* ---- pane 3: pdfrx canvas reader (Pdfium WASM, self-hosted) ---- */
+let pdfPage = 1, pdfrxViewer = null, pdfrxReady = null;
+
+function ensurePdfrx() {
+  if (pdfrxReady) return pdfrxReady;
+  pdfrxReady = (async () => {
+    const mod = await import('/pdfrx/viewer/dist/index.js');
+    const host = $('pdfCanvasHost');
+    pdfrxViewer = new mod.PdfrxViewer(host, {
+      engineOptions: { wasmModulesUrl: '/pdfium/' },
+      backgroundColor: 'transparent',
+    });
+    return pdfrxViewer;
+  })();
+  return pdfrxReady;
+}
+async function openPdf(path, page) {
+  const v = await ensurePdfrx();
+  await v.openUrl(path);
+  v.goToPage(page, 0);
+  await v.waitForRender();
+}
+function pdfPath() {
+  if (!S.selected || !S.selected.pdfPath) return null;
+  return `/api/pdf/${encodeURIComponent(S.selected.id)}`;
+}
+function renderPdfBar() {
+  const p = S.selected;
+  const bar = $('paperInfo');
+  bar.textContent = cleanText(p?.title) || 'Select a paper →';
+  bar.title = cleanText(p?.title) || '';
+  const pg = $('pageInfo');
+  if (p && p.pageCount) {
+    pg.style.display = '';
+    pg.textContent = `${pdfPage} / ${p.pageCount}${(p.pagesWithoutText || []).length ? ` · gap p.${(p.pagesWithoutText || []).join(',')}` : ''}`;
+  } else pg.style.display = 'none';
+  const has = Boolean(p && p.pdfPath);
+  $('pdfOpen').disabled = !has;
+  $('pdfPrev').disabled = !has || pdfPage <= 1;
+  $('pdfNext').disabled = !has || (p.pageCount ? pdfPage >= p.pageCount : false);
+}
+function showOverlay(kind) {
+  overlay.style.display = 'flex';
+  overlay.innerHTML = '';
+  const big = document.createElement('div'); big.className = 'big';
+  const sub = document.createElement('div'); sub.className = 'sub';
+  if (kind === 'empty') {
+    big.textContent = '📄';
+    sub.textContent = 'No paper selected — open one from pane 1.';
+    overlay.append(big, sub);
+  } else if (kind === 'loading') {
+    big.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    sub.textContent = 'Loading PDF…';
+    overlay.append(big, sub);
+  } else if (kind === 'external') {
+    big.textContent = '🔗';
+    sub.textContent = 'Preview blocked by publisher. Open the link, or paste its PDF URL in pane 1 → Fetch for local preview.';
+    const b = document.createElement('button'); b.textContent = 'Open link ↗';
+    b.addEventListener('click', () => window.open(S.selected.link, '_blank', 'noreferrer'));
+    overlay.append(big, sub, b);
+  } else if (kind === 'gap') {
+    big.textContent = '⚠';
+    sub.textContent = 'These pages have no text layer — see the rendered PDF.';
+    overlay.append(big, sub);
+  }
+}
+async function select(p) {
+  S.selected = p;
+  S.reader = { state: 'loading', paperId: p.id };
+  pdfPage = 1;
+  renderPdfBar();
+  document.querySelectorAll('.card').forEach((c) => c.removeAttribute('aria-current'));
+  history.replaceState(null, '', `?paperId=${encodeURIComponent(p.id)}`);
+  if (!p.pdfPath) {
+    S.reader.state = 'gap';
+    showOverlay('external');
+    sysMsg(`Opened “${cleanText(p.title)}” (external link, no local PDF). Ask me anything, or Fetch its PDF for full preview.`);
+    return;
+  }
+  showOverlay('loading');
+  sysMsg(`Opened “${cleanText(p.title)}”. Ask me anything — answers carry [p.X] citations.`);
+  try {
+    await openPdf(pdfPath(), 1);
+    S.reader.state = 'ready'; overlay.style.display = 'none'; renderPdfBar();
+  } catch (e) {
+    S.reader.state = 'gap';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = '';
+    const sub = document.createElement('div'); sub.className = 'sub';
+    sub.textContent = `Viewer failed (${e.message || e}) — open in new tab instead.`;
+    const b = document.createElement('button'); b.textContent = 'Open ↗';
+    b.addEventListener('click', () => window.open(pdfPath(), '_blank', 'noreferrer'));
+    overlay.append(sub, b);
+  }
+}
+$('pdfOpen').addEventListener('click', () => {
+  if (S.selected && S.selected.pdfPath) window.open(pdfPath(), '_blank', 'noreferrer');
+});
+$('pdfPrev').addEventListener('click', async () => {
+  if (pdfPage > 1 && pdfrxViewer) { pdfPage--; pdfrxViewer.goToPage(pdfPage, 0); renderPdfBar(); }
+});
+$('pdfNext').addEventListener('click', async () => {
+  if (S.selected?.pageCount && pdfPage < S.selected.pageCount && pdfrxViewer) { pdfPage++; pdfrxViewer.goToPage(pdfPage, 0); renderPdfBar(); }
+});
+$('pickToggle').addEventListener('click', () => document.body.classList.toggle('pick-hidden'));
+$('pdfFocus').addEventListener('click', () => {
+  const on = document.body.classList.toggle('focus-pdf');
+  $('pdfFocus').textContent = on ? '⛶' : '⛶';
+  $('pdfFocus').title = on ? 'exit focus mode (Esc)' : 'focus reading mode (full width)';
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('focus-pdf'))
+    document.body.classList.remove('focus-pdf');
+});
+showOverlay('empty');
+renderPdfBar();
+
+/* ---- pane 2: streaming dialog (Gemini-style bubbles) ---- */
+function bubble(role, streaming) {
+  const d = document.createElement('div');
+  d.className = `msg ${role}${streaming ? ' streaming' : ''}`;
+  msgsEl.append(d);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return d;
+}
+function sysMsg(t) {
+  const d = bubble('model', false);
+  d.style.opacity = '.75'; d.textContent = t;
+}
+function renderCites(el) {
+  // Two disjoint styles, never confused:
+  //   [p.4] / [p.1-2] → .cite pill (jumps PDF, same tab)
+  //   http(s)://…     → a.ext blue link (new tab)
+  // Everything else is plain text: markdown markers stripped first.
+  el.innerHTML = '';
+  const raw = cleanText(el._full || '');
+  const parts = raw.split(/(\[p\.\d+(?:[–-]\d+)?(?:\s*Fig\.\d+)?\]|https?:\/\/\S+)/g);
+  for (const part of parts) {
+    const pm = part.match(/\[p\.(\d+)/);
+    if (pm) {
+      const a = document.createElement('span');
+      a.className = 'cite'; a.textContent = part;
+      a.setAttribute('role', 'button');
+      a.setAttribute('tabindex', '0');
+      a.setAttribute('title', `jump to page ${pm[1]}`);
+      const jump = () => {
+        if (!S.selected) return;
+        if (!S.selected.pdfPath) { err('no local PDF — Fetch it first to jump pages'); return; }
+        const n = Number(pm[1]);
+        if (pdfrxViewer) { pdfPage = n; pdfrxViewer.goToPage(n, 0); renderPdfBar(); }
+        else { pdfPage = n; openPdf(pdfPath(), n).then(() => renderPdfBar()); }
+      };
+      a.addEventListener('click', jump);
+      a.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); } });
+      el.append(a);
+      continue;
+    }
+    if (/^https?:\/\//.test(part)) {
+      const a = document.createElement('a');
+      a.className = 'ext'; a.href = part; a.target = '_blank'; a.rel = 'noreferrer';
+      a.textContent = part.length > 60 ? part.slice(0, 60) + '…' : part;
+      el.append(a);
+      continue;
+    }
+    el.append(document.createTextNode(part));
+  }
+}
+function flushChat() {
+  const c = S.chat;
+  c.scheduled = false;
+  if (!c.queue.length || !c.bubble) return;
+  const chunk = c.queue.join('');
+  c.queue.length = 0;
+  c.bubble._full = (c.bubble._full || '') + chunk;
+  c.bubble.classList.add('streaming');
+  renderCites(c.bubble);
+  if (c.bubble._full.length > MAX_CHARS) {
+    stopChat();
+    c.bubble._full += '\n…[truncated: use /api/read cursor]';
+    renderCites(c.bubble);
+    return;
+  }
+  if (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 60)
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+function pushChat(t) {
+  S.chat.queue.push(t);
+  if (!S.chat.scheduled) { S.chat.scheduled = true; requestAnimationFrame(flushChat); }
+}
+function stopChat() {
+  if (S.chat.es) { S.chat.es.close(); S.chat.es = null; }
+  if (S.chat.bubble) S.chat.bubble.classList.remove('streaming');
+  S.chat.state = 'done';
+  $('stopBtn').disabled = true; $('askBtn').disabled = false;
+}
+function askFlow(kind) {
+  if (!S.selected) { err('open a paper from pane 1 first'); return; }
+  err('');
+  const q = $('askq').value.trim();
+  const qb = bubble('user', false);
+  qb.textContent = kind === 'sum' ? `Summarize this paper` : (q || 'What problem does this paper address?');
+  $('askq').value = '';
+  // waiting + streaming share ONE bubble: dots first, text replaces them in place (no orphan ...)
+  const wb = bubble('model', true);
+  wb.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+  if (S.chat.es) S.chat.es.close();
+  S.chat = { ...S.chat, state: 'streaming', queue: [], chars: 0, bubble: wb };
+  wb._full = '';
+  $('stopBtn').disabled = false; $('askBtn').disabled = true;
+  const url = kind === 'sum'
+    ? `/api/summarize?id=${encodeURIComponent(S.selected.id)}`
+    : `/api/ask?id=${encodeURIComponent(S.selected.id)}&q=${encodeURIComponent(qb.textContent)}`;
+  const es = new EventSource(url);
+  S.chat.es = es;
+  let started = false;
+  es.onmessage = (e) => {
+    if (e.data === '[DONE]') { stopChat(); return; }
+    if (!started) {
+      started = true;
+      wb.innerHTML = '';
+    }
+    try { pushChat(JSON.parse(e.data).text); }
+    catch { pushChat(e.data); }
+  };
+  es.onerror = () => {
+    if (!started) {
+      wb.classList.remove('streaming');
+      wb.textContent = 'No answer — paper not found on server (try Save first, or re-open).';
+    }
+    stopChat();
+  };
+}
+
+$('searchBtn').addEventListener('click', runSearch);
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+$('tabSearch').addEventListener('click', () => setMode('search'));
+$('tabLib').addEventListener('click', () => setMode('library'));
+$('uploadBtn').addEventListener('click', doUpload);
+$('fetchBtn').addEventListener('click', doFetch);
+$('askBtn').addEventListener('click', () => askFlow('ask'));
+$('askq').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') askFlow('ask');
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); }
+});
+$('stopBtn').addEventListener('click', stopChat);
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('q').focus(); }
+  if (e.key >= '1' && e.key <= '3' && (e.metaKey || e.ctrlKey)) {
+    const panes = ['panePick', 'paneChat', 'panePdf'];
+    $(panes[Number(e.key) - 1]).scrollIntoView({ behavior: 'smooth', inline: 'center' });
+  }
+});
+/* Keys panel: status-only read; values never leave the inputs.
+   Save previews .env lines for manual paste (page never POSTs keys). */
+async function refreshKeys() {
+  try {
+    const s = await (await fetch('/api/settings')).json();
+    const short = (s.llm.model || '').split('/').pop();
+    $('keyStatus').textContent = `llm: ${short} (${s.llm.mode}) · exa: ${s.exa.mode}`;
+    $('keyStatus').title = `${s.llm.model} via ${s.llm.baseUrl}`;
+    if (!$('kBase').value) $('kBase').placeholder = s.llm.baseUrl;
+    if (!$('kModel').value) $('kModel').placeholder = s.llm.model;
+  } catch { $('keyStatus').textContent = 'llm: unknown'; }
+}
+$('keyBtn').addEventListener('click', () => {
+  const p = $('keyPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  refreshKeys();
+});
+$('kSave').addEventListener('click', async () => {
+  const lines = [];
+  if ($('kBase').value.trim()) lines.push(`LLM_BASE_URL=${$('kBase').value.trim()}`);
+  if ($('kModel').value.trim()) lines.push(`LLM_MODEL=${$('kModel').value.trim()}`);
+  if ($('kLlm').value) lines.push(`LLM_API_KEY=${$('kLlm').value}`);
+  if ($('kExa').value) lines.push(`EXA_API_KEY=${$('kExa').value}`);
+  const out = $('kOut');
+  out.style.display = 'block';
+  out.textContent = lines.length ? lines.join('\n') + '\n# paste into .env, restart server' : '# nothing to change (proxy-managed + keyless defaults active)';
+  try { await navigator.clipboard.writeText(out.textContent); out.textContent += '\n(copied)'; } catch { /* clipboard denied */ }
+  $('kLlm').value = ''; $('kExa').value = '';
+});
+refreshKeys();
+sysMsg('Pick a paper in pane 1 (search online or open library). Paste a PDF URL to fetch it locally — same pipeline, zero friction.');
+runSearch();
+/* demo aids: ?demo=1 shows caption bar; demoCap(text)/demoClick(x,y) drive it */
+if (new URLSearchParams(location.search).has('demo')) {
+  document.body.classList.add('demo');
+  const cap = document.createElement('div');
+  cap.id = 'demoCap'; cap.textContent = 'HW1 Research Assistant — demo';
+  document.body.append(cap);
+}
+function demoCap(t) {
+  const c = document.getElementById('demoCap');
+  if (c) c.textContent = t;
+}
+function demoClick(x, y) {
+  const r = document.createElement('div');
+  r.className = 'click-ripple';
+  r.style.left = `${x}px`; r.style.top = `${y}px`;
+  document.body.append(r);
+  setTimeout(() => r.remove(), 650);
+}
+document.addEventListener('pointerdown', (e) => {
+  if (document.body.classList.contains('demo')) demoClick(e.clientX, e.clientY);
+}, true);
+</script>
+</body>
+</html>
