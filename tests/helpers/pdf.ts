@@ -46,7 +46,8 @@ export function makePdf(opts: PdfOptions = {}): Uint8Array {
 
   const infoNum = 3 + 2 * n;
   if (opts.title) parts.push(Buffer.from(`${infoNum} 0 obj\n<< /Title (${opts.title}) >>\nendobj\n`));
-  parts.push(Buffer.from(`trailer\n<< /Root 1 0 R /Size ${infoNum + 1} >>\n%%EOF\n`));
+  const infoRef = opts.title ? ` /Info ${infoNum} 0 R` : "";
+  parts.push(Buffer.from(`trailer\n<< /Root 1 0 R${infoRef} /Size ${infoNum + 1} >>\n%%EOF\n`));
 
   return new Uint8Array(Buffer.concat(parts));
 }

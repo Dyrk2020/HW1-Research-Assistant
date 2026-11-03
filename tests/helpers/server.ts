@@ -15,12 +15,14 @@ export type TestServer = {
 export async function startServer(env: Record<string, string> = {}): Promise<TestServer> {
   const dir = await mkdtemp(join(tmpdir(), "hw2-server-"));
   const dbPath = join(dir, "papers.db");
+  const papersDir = join(dir, "papers");
   const proc = Bun.spawn(["bun", "server.ts"], {
     cwd: REPO,
     env: {
       ...process.env,
       PORT: "0",
       DB_PATH: dbPath,
+      PAPERS_DIR: papersDir,
       LLM_BASE_URL: "http://127.0.0.1:9/v1",
       ...env,
     },
@@ -31,6 +33,14 @@ export async function startServer(env: Record<string, string> = {}): Promise<Tes
   const reader = proc.stdout.getReader();
   const decoder = new TextDecoder();
   let buf = "";
+  let err = "";
+  void (async () => {
+    try {
+      err = await new Response(proc.stderr).text();
+    } catch {
+      // process exited
+    }
+  })();
   const deadline = Date.now() + 20_000;
 
   while (Date.now() < deadline) {
@@ -64,5 +74,5 @@ export async function startServer(env: Record<string, string> = {}): Promise<Tes
   }
 
   proc.kill();
-  throw new Error(`server did not start: ${buf}`);
+  throw new Error(`server did not start: stdout=${buf} stderr=${err}`);
 }

@@ -39,11 +39,12 @@ describe("library persistence", () => {
   });
 
   test("list returns this file's rows newest first", () => {
+    savePaper({ ...base, id: "dbt-p1", title: "Paper One", createdAt: 1_000 });
     savePaper({ ...base, id: "dbt-p2", title: "Paper Two", createdAt: 2_000 });
     savePaper({ ...base, id: "dbt-p3", title: "Paper Three", createdAt: 3_000 });
     const ids = listPapers()
       .map((p) => p.id)
-      .filter((id) => id.startsWith("dbt-"));
+      .filter((id) => ["dbt-p1", "dbt-p2", "dbt-p3"].includes(id));
     expect(ids).toEqual(["dbt-p3", "dbt-p2", "dbt-p1"]);
   });
 

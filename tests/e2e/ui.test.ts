@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Route } from "playwright";
 import { startServer, type TestServer } from "../helpers/server.ts";
 
 let server: TestServer;
-let browser: Browser;
+
+// Chrome is optional: `bun test` must stay green on machines without it.
+const browser: Browser | null = await chromium.launch({ channel: "chrome", headless: true }).catch(() => null);
+if (!browser) console.warn("[e2e] Google Chrome unavailable; skipping Playwright tests");
 
 const paper = {
   id: "e1",
@@ -22,9 +25,10 @@ const bundle = (papers: unknown[]) => ({
   body: JSON.stringify({ papers, warnings: [], sourceStatus: [] }),
 });
 
+const emptySearch = (route: Route) => route.fulfill(bundle([]));
+
 beforeAll(async () => {
   server = await startServer();
-  browser = await chromium.launch({ channel: "chrome", headless: true });
 }, 60_000);
 
 afterAll(async () => {
@@ -32,9 +36,9 @@ afterAll(async () => {
   await server?.stop();
 }, 30_000);
 
-test("renders the three-pane shell", async () => {
-  const page = await browser.newPage();
-  await page.route("**/api/search**", (route) => route.fulfill(bundle([])));
+test.skipIf(!browser)("renders the three-pane shell", async () => {
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", emptySearch);
   await page.goto(server.url);
 
   expect(await page.title()).toBe("HW1 Research Assistant");
@@ -45,14 +49,17 @@ test("renders the three-pane shell", async () => {
   await page.close();
 }, 30_000);
 
-test("renders search results as cards", async () => {
-  const page = await browser.newPage();
-  await page.route("**/api/search**", (route) =>
-    route.fulfill(bundle([paper, { ...paper, id: "e2", title: "Second Paper" }])),
-  );
+test.skipIf(!browser)("renders the clicked search's results", async () => {
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    return route.fulfill(q === "agents" ? bundle([paper, { ...paper, id: "e2", title: "Second Paper" }]) : bundle([]));
+  });
   await page.goto(server.url);
   await page.fill("#q", "agents");
+  const request = page.waitForRequest((r) => r.url().includes("/api/search?q=agents"));
   await page.click("#searchBtn");
+  await request;
   await page.waitForSelector(".card");
 
   expect(await page.locator(".card").count()).toBe(2);
@@ -61,9 +68,9 @@ test("renders search results as cards", async () => {
   await page.close();
 }, 30_000);
 
-test("library tab loads saved papers", async () => {
-  const page = await browser.newPage();
-  await page.route("**/api/search**", (route) => route.fulfill(bundle([])));
+test.skipIf(!browser)("library tab loads saved papers", async () => {
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", emptySearch);
   await page.route("**/api/library", (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [paper] }) })
@@ -79,15 +86,21 @@ test("library tab loads saved papers", async () => {
   await page.close();
 }, 30_000);
 
-test("saving a card flips the button to Saved", async () => {
-  const page = await browser.newPage();
-  await page.route("**/api/search**", (route) => route.fulfill(bundle([paper])));
-  await page.route("**/api/library", (route) =>
-    route.request().method() === "POST"
-      ? route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ paper }) })
-      : route.continue(),
-  );
+test.skipIf(!browser)("saving a card sends the paper and flips the button", async () => {
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    return route.fulfill(q === "agents" ? bundle([paper]) : bundle([]));
+  });
+  await page.route("**/api/library", (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const body = route.request().postDataJSON() as { id?: string; title?: string };
+    if (!body?.id || !body?.title) return route.fulfill({ status: 400, body: "bad payload" });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ paper: body }) });
+  });
   await page.goto(server.url);
+  await page.fill("#q", "agents");
+  await page.click("#searchBtn");
   await page.waitForSelector(".card");
 
   const save = page.locator(".card .row button").nth(1);
@@ -99,10 +112,15 @@ test("saving a card flips the button to Saved", async () => {
   await page.close();
 }, 30_000);
 
-test("surfaces a search failure in the error bar", async () => {
-  const page = await browser.newPage();
-  await page.route("**/api/search**", (route) => route.fulfill({ status: 500, body: "boom" }));
+test.skipIf(!browser)("surfaces a search failure in the error bar", async () => {
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q");
+    return q === "boom" ? route.fulfill({ status: 500, body: "boom" }) : route.fulfill(bundle([]));
+  });
   await page.goto(server.url);
+  expect(await page.locator("#errbar").isVisible()).toBe(false);
+  await page.fill("#q", "boom");
   await page.click("#searchBtn");
   await page.waitForFunction(() => document.getElementById("errbar")?.style.display === "block");
 

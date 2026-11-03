@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { handleRequest } from "../../server.ts";
+import { makePdf } from "../helpers/pdf.ts";
 
 // DB_PATH / PAPERS_DIR / LLM_BASE_URL are set once in tests/setup.ts.
-const REPO = join(import.meta.dir, "../..");
+const fixtureBytes = () => {
+  const words = Array.from({ length: 30 }, (_, i) => `fixture${i}`).join(" ");
+  return makePdf({ pages: [words], title: "HW2 Fixture Paper" });
+};
 
 const api = (path: string, init?: RequestInit) => handleRequest(new Request("http://test.local" + path, init));
 const postPaper = (body: unknown) =>
@@ -35,9 +37,9 @@ describe("static shell", () => {
 
 describe("library CRUD", () => {
   test("lists papers", async () => {
+    await postPaper(paper({ id: "api-list" }));
     const data = await (await api("/api/library")).json();
-    expect(Array.isArray(data.papers)).toBe(true);
-    expect(data.papers.some((p: { id: string }) => p.id === "api-p1")).toBe(false);
+    expect(data.papers.map((p: { id: string }) => p.id)).toContain("api-list");
   });
 
   test("creates a paper and lists it", async () => {
@@ -60,6 +62,7 @@ describe("library CRUD", () => {
 
 describe("paged read cursor", () => {
   test("returns a bounded window and the next offset", async () => {
+    await postPaper(paper());
     const data = await (await api("/api/read?id=api-p1&offset=0&limit=10")).json();
     expect(data.text).toBe("0123456789");
     expect(data.end).toBe(10);
@@ -69,6 +72,7 @@ describe("paged read cursor", () => {
   });
 
   test("ends the document on the final window", async () => {
+    await postPaper(paper());
     const data = await (await api("/api/read?id=api-p1&offset=20&limit=10")).json();
     expect(data.text).toBe("klmno");
     expect(data.nextOffset).toBeNull();
@@ -76,6 +80,7 @@ describe("paged read cursor", () => {
   });
 
   test("clamps a zero limit up to one character", async () => {
+    await postPaper(paper());
     const data = await (await api("/api/read?id=api-p1&limit=0")).json();
     expect(data.text).toBe("0");
   });
@@ -95,6 +100,7 @@ describe("paged read cursor", () => {
 
 describe("SSE summarize and ask", () => {
   test("summarize streams mock data and terminates with [DONE]", async () => {
+    await postPaper(paper());
     const res = await api("/api/summarize?id=api-p1");
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const body = await res.text();
@@ -104,6 +110,7 @@ describe("SSE summarize and ask", () => {
   });
 
   test("ask streams a structured JSON delta", async () => {
+    await postPaper(paper());
     const res = await api("/api/ask?id=api-p1&q=what%20is%20this");
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const body = await res.text();
@@ -150,9 +157,8 @@ describe("settings", () => {
 
 describe("upload pipeline", () => {
   const upload = async () => {
-    const bytes = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
     const fd = new FormData();
-    fd.append("file", new File([bytes], "hw1.pdf", { type: "application/pdf" }));
+    fd.append("file", new File([fixtureBytes()], "fixture.pdf", { type: "application/pdf" }));
     return api("/api/upload", { method: "POST", body: fd });
   };
 
@@ -165,28 +171,28 @@ describe("upload pipeline", () => {
     expect(uploadedId).toMatch(/^pdf:[0-9a-f]{16}$/);
     expect(data.paper.source).toBe("upload");
     expect(data.paper.extractionStatus).toBe("text_extracted");
-    expect(data.paper.pageCount).toBe(4);
-    expect(data.paper.title).toBe("Homework 1: Build an AI Research Assistant with a Coding Agent");
+    expect(data.paper.pageCount).toBe(1);
+    expect(data.paper.title).toBe("HW2 Fixture Paper");
     expect(data.paper.pagesWithoutText).toEqual([]);
     expect(existsSync(data.paper.pdfPath)).toBe(true);
   });
 
   test("dedupes the same bytes to one row", async () => {
-    const res = await upload();
-    const data = await res.json();
-    expect(data.paper.id).toBe(uploadedId);
+    const first = await (await upload()).json();
+    const second = await (await upload()).json();
+    expect(second.paper.id).toBe(first.paper.id);
 
     const lib = await (await api("/api/library")).json();
-    expect(lib.papers.filter((p: { id: string }) => p.id === uploadedId)).toHaveLength(1);
+    expect(lib.papers.filter((p: { id: string }) => p.id === first.paper.id)).toHaveLength(1);
   });
 
   test("serves the stored PDF bytes", async () => {
-    const res = await api(`/api/pdf/${encodeURIComponent(uploadedId)}`);
+    const uploaded = await (await upload()).json();
+    const res = await api(`/api/pdf/${encodeURIComponent(uploaded.paper.id)}`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
     const served = new Uint8Array(await res.arrayBuffer());
-    const original = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
-    expect(served.length).toBe(original.length);
+    expect(served.length).toBe(fixtureBytes().length);
   });
 
   test("404s for an unknown PDF", async () => {
@@ -195,10 +201,10 @@ describe("upload pipeline", () => {
   });
 
   test("queues concurrent uploads and reports queue depth", async () => {
-    const bytes = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
+    const bytes = fixtureBytes();
     const make = () => {
       const fd = new FormData();
-      fd.append("file", new File([bytes], "hw1.pdf", { type: "application/pdf" }));
+      fd.append("file", new File([bytes], "fixture.pdf", { type: "application/pdf" }));
       return api("/api/upload", { method: "POST", body: fd });
     };
 
@@ -330,7 +336,7 @@ describe("/api/fetch pipeline", () => {
   });
 
   test("downloads, extracts and stores a PDF", async () => {
-    const bytes = await readFile(join(REPO, "hw1.pdf"));
+    const bytes = fixtureBytes();
     globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
       if (init?.method === "HEAD") throw new Error("HEAD blocked");
       return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
