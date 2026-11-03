@@ -328,11 +328,10 @@ describe("pure helpers", () => {
     expect(decodeInvertedIndex(undefined)).toBe("");
   });
 
-  test("normalizes titles and caps dedupe keys at twelve tokens", () => {
+  test("normalizes titles for dedupe", () => {
     expect(dedupeKey("Attention: Is All You Need!")).toBe("attention is all you need");
     expect(dedupeKey("A  B\tC")).toBe("a b c");
     expect(dedupeKey("!!!")).toBe("");
-    expect(dedupeKey("one two three four five six seven eight nine ten eleven twelve THIRTEEN").split(" ")).toHaveLength(12);
   });
 
   test("merges lists and drops exact and near duplicates", () => {

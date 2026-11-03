@@ -35,7 +35,11 @@ test.failing("BUG: /api/pdf serves a client-supplied pdfPath outside the managed
       pdfPath: secretPath,
     }),
   });
+  // A fix may reject the import at POST time; either 400 here or a sanitized
+  // 201 followed by a 404 on serve satisfies the requirement.
+  if (created.status === 400) return;
   expect(created.status).toBe(201);
+  expect((await created.json()).paper.pdfPath).toBeNull();
 
   const served = await fetch(server.url + "/api/pdf/evil");
   expect(served.status).toBe(404);

@@ -31,7 +31,8 @@ describe("library persistence", () => {
 
   // test.failing pins the defect; remove the wrapper once rowToPaper returns createdAt.
   test.failing("BUG: getPaper drops createdAt even though Paper declares it", () => {
-    expect(getPaper("dbt-p1")?.createdAt).toBe(1_000);
+    savePaper({ ...base, id: "dbt-pin", title: "Pin Paper", createdAt: 1_000 });
+    expect(getPaper("dbt-pin")?.createdAt).toBe(1_000);
   });
 
   test("missing id returns null", () => {

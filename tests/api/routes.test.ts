@@ -128,6 +128,7 @@ describe("SSE summarize and ask", () => {
   });
 
   test("streams real LLM output when the upstream answers", async () => {
+    await postPaper(paper());
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ choices: [{ message: { content: "1. Real point [p.1]" } }] }), {
@@ -192,7 +193,7 @@ describe("upload pipeline", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/pdf");
     const served = new Uint8Array(await res.arrayBuffer());
-    expect(served.length).toBe(fixtureBytes().length);
+    expect(served).toEqual(fixtureBytes());
   });
 
   test("404s for an unknown PDF", async () => {

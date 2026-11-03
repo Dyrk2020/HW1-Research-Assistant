@@ -10,7 +10,7 @@ const post = (path: string, body: string) =>
     }),
   );
 
-test.failing("BUG: malformed library JSON returns 500 instead of 400", async () => {
+test.failing("BUG: missing-field library body returns 500 instead of 400", async () => {
   const res = await post("/api/library", "{}");
   expect(res.status).toBe(400);
 });

@@ -51,10 +51,10 @@ bun test tests/e2e         # 5 Playwright tests (skipped if Chrome is absent)
 ## Measured
 
 - Search cold ~1.3-8s (SS 429-bound) → warm 36-44ms; 20-26 papers keyless
-- Native PDF 18-19ms/4p (hw1.pdf, true text + `<!-- Page N -->`); TS fallback 31ms
+- Native/fallback PDF extraction is exercised by a generated one-page fixture (no repo asset required).
 - Upload queue: 3 concurrent → active 2 + 1 queued
 - Boot: `bun run` 0.22s ready
-- E2E (computer-use, 3/3 ✅) + UI loop v1-v6 → `demo-hw1-v6.mp4`
+- E2E: 5/5 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
 
 ## Known gaps
 
