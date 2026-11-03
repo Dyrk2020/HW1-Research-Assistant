@@ -8,6 +8,9 @@
         "@oh-my-pi/pi-natives": "^18.8.9",
         "@pdfrx/viewer": "^0.27.0",
       },
+      "devDependencies": {
+        "playwright": "^1.64.1",
+      },
     },
   },
   "packages": {
@@ -30,5 +33,9 @@
     "@pdfrx/viewer": ["@pdfrx/viewer@0.27.0", "", { "dependencies": { "@pdfrx/engine": "^0.27.0", "@pdfrx/viewer-core": "^0.27.0" } }, "sha512-q4TX/slPC9uEPPShkUYG04EUgczqgk8TOKBYFB/9Rp3t+B6ohEeI8w1gtujgjvdpZSjAOSinflA64Om/exSnHg=="],
 
     "@pdfrx/viewer-core": ["@pdfrx/viewer-core@0.27.0", "", {}, "sha512-cq/6V/qAtE+UMVP82KvE05p4/W18ErYe2MSz5d0eXN1CMiEm7zISrKQ9NdTuxIVUGeUHDh3OlAKMjkaIfgtQYw=="],
+
+    "playwright": ["playwright@1.64.1", "", { "dependencies": { "playwright-core": "1.64.1" }, "bin": { "playwright": "cli.js" } }, "sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA=="],
+
+    "playwright-core": ["playwright-core@1.64.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ=="],
   }
 }

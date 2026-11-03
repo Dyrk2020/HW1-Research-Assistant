@@ -5,7 +5,7 @@ import { MAX_DOWNLOAD_MB, isPublicHttpUrl } from "./lib/safety.ts";
 import { pdfToMarkdown } from "@oh-my-pi/pi-natives";
 import { mkdir } from "node:fs/promises";
 const PORT = Number(process.env.PORT ?? 4321);
-const PAPERS_DIR = `${import.meta.dir}/papers`;
+const PAPERS_DIR = process.env.PAPERS_DIR ?? `${import.meta.dir}/papers`;
 await mkdir(PAPERS_DIR, { recursive: true });
 
 // Upload worker pool: cap concurrent native parses, queue the rest (sequential drain)
@@ -154,9 +154,7 @@ async function extractUpload(id: string, fileName: string, buf: Uint8Array, pdfP
   }
 }
 
-const server = Bun.serve({
-  port: PORT,
-  async fetch(req) {
+export async function handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const { pathname, searchParams } = url;
 
@@ -336,8 +334,11 @@ const server = Bun.serve({
     }
 
     return json({ error: "not found" }, 404);
-  },
-});
+}
 
-console.log(`MVP on http://localhost:${server.port}`);
-console.log(`exa: ${process.env.EXA_API_KEY ? "key set (full API)" : "keyless MCP"} | llm: ${process.env.LLM_MODEL ?? "deepseek/deepseek-v4.1-flash"} via ${process.env.LLM_BASE_URL ?? "http://127.0.0.1:8787/v1"} (${process.env.LLM_API_KEY ? "custom-key" : "proxy-managed"})`);
+// Only bind a port when executed directly; tests import handleRequest instead.
+if (import.meta.main) {
+  const server = Bun.serve({ port: PORT, fetch: handleRequest });
+  console.log(`MVP on http://localhost:${server.port}`);
+  console.log(`exa: ${process.env.EXA_API_KEY ? "key set (full API)" : "keyless MCP"} | llm: ${process.env.LLM_MODEL ?? "deepseek/deepseek-v4.1-flash"} via ${process.env.LLM_BASE_URL ?? "http://127.0.0.1:8787/v1"} (${process.env.LLM_API_KEY ? "custom-key" : "proxy-managed"})`);
+}

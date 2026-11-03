@@ -4,10 +4,16 @@
   "type": "module",
   "scripts": {
     "dev": "bun run server.ts",
-    "start": "bun run server.ts"
+    "start": "bun run server.ts",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "test:e2e": "bun test tests/e2e"
   },
   "dependencies": {
     "@oh-my-pi/pi-natives": "^18.8.9",
     "@pdfrx/viewer": "^0.27.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
   }
 }

@@ -57,7 +57,7 @@ type OaItem = {
 };
 type OaResponse = { results?: OaItem[]; meta?: { count?: number } };
 
-function decodeInvertedIndex(index: Record<string, number[]> | undefined): string {
+export function decodeInvertedIndex(index: Record<string, number[]> | undefined): string {
   if (!index) return "";
   const slots: string[] = [];
   for (const word of Object.keys(index)) {
@@ -66,7 +66,7 @@ function decodeInvertedIndex(index: Record<string, number[]> | undefined): strin
   return slots.filter(Boolean).join(" ");
 }
 
-function dedupeKey(title: string): string {
+export function dedupeKey(title: string): string {
   const norm = title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   // Truncation-proof: sources cut titles at different lengths ("...AI ..." vs "...AI ...").
   // Collapse interior whitespace runs, cut trailing partial token, cap at 12 tokens.
@@ -74,7 +74,7 @@ function dedupeKey(title: string): string {
   return toks.join(" ");
 }
 
-function mergePapers(lists: Paper[][]): Paper[] {
+export function mergePapers(lists: Paper[][]): Paper[] {
   const seen = new Map<string, Paper>();
   for (const list of lists) {
     for (const p of list) {

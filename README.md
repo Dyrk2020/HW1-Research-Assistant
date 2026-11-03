@@ -35,6 +35,19 @@ Never commit keys (`.gitignore` covers `.env`, `*.db`, `papers/`). Agent page ha
 - `GET /api/ask?id=&q=` (SSE) — ≤5 sentences × 40 words, one cite each, page-varied
 - `GET /api/settings` — `{llm: {baseUrl, model, keySet, mode}, exa: {...}}` (no values)
 
+
+## Tests (HW2)
+
+```bash
+bun install
+bun test --coverage        # 103 unit/integration tests + coverage
+bun test tests/e2e         # 5 Playwright tests (uses installed Google Chrome)
+```
+
+- `bunfig.toml` preloads `tests/setup.ts`, which points `DB_PATH`/`PAPERS_DIR` at a throwaway temp dir.
+- Tests live in `tests/{unit,api,bugs,e2e}`; `tests/bugs` uses `test.failing` to pin known defects.
+- The server exports `handleRequest` and binds a port only under `import.meta.main`, so route tests run in-process.
+
 ## Measured
 
 - Search cold ~1.3-8s (SS 429-bound) → warm 36-44ms; 20-26 papers keyless
