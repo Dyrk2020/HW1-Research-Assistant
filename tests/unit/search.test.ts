@@ -147,7 +147,7 @@ describe("searchPapers", () => {
     stub({ "api.semanticscholar.org": () => json({}, 429) });
     const bundle = await searchPapers("ss-429-q");
 
-    expect(bundle.sourceStatus[1]).toMatchObject({ source: "SemanticScholar", status: "limited" });
+    expect(bundle.sourceStatus[1]).toMatchObject({ source: "SemanticScholar", status: "limited", returnedCount: 0 });
     expect(bundle.warnings.join(" ")).toContain("rate-limited");
     expect(bundle.papers.length).toBeGreaterThan(0);
   });

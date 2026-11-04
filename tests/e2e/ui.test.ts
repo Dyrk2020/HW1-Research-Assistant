@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { chromium, type Browser, type Route } from "playwright";
+import { makePdf } from "../helpers/pdf.ts";
 import { startServer, type TestServer } from "../helpers/server.ts";
 
 let server: TestServer;
@@ -108,6 +109,63 @@ test.skipIf(!browser)("saving a card sends the paper and flips the button", asyn
   await page.waitForFunction(() => document.querySelector(".card .row button:nth-child(2)")?.textContent === "Saved");
 
   expect(await save.textContent()).toBe("Saved");
+
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("upload flow selects the new paper", async () => {
+  const page = await browser!.newPage();
+  const uploaded = { ...paper, id: "up1", title: "Uploaded Paper", source: "upload", link: "https://example.com/u" };
+  await page.route("**/api/search**", emptySearch);
+  await page.route("**/api/upload", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ paper: uploaded, queue: { active: 0, queued: 0, concurrency: 1 } }),
+    }),
+  );
+  await page.route("**/api/library", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [uploaded] }) })
+      : route.continue(),
+  );
+  await page.goto(server.url);
+  await page.setInputFiles("#file", {
+    name: "fixture.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(makePdf({ pages: ["hello"] })),
+  });
+  await page.click("#uploadBtn");
+  await page.waitForFunction(() => document.getElementById("paperInfo")?.textContent?.includes("Uploaded Paper"));
+
+  expect(await page.locator("#libCount").textContent()).toBe("library(1)");
+  expect(await page.locator("#msgs").textContent()).toContain("Opened");
+
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
+  const page = await browser!.newPage();
+  const fetched = { ...paper, id: "f1", title: "Fetched Paper", source: "fetch", link: "https://example.com/f.pdf" };
+  await page.route("**/api/search**", emptySearch);
+  await page.route("**/api/fetch", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ paper: fetched, queue: { active: 0, queued: 0, concurrency: 1 }, metaMiss: false }),
+    }),
+  );
+  await page.route("**/api/library", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [fetched] }) })
+      : route.continue(),
+  );
+  await page.goto(server.url);
+  await page.fill("#fetchUrl", "https://example.com/f.pdf");
+  await page.click("#fetchBtn");
+  await page.waitForFunction(() => document.getElementById("paperInfo")?.textContent?.includes("Fetched Paper"));
+
+  expect(await page.locator("#libCount").textContent()).toBe("library(1)");
 
   await page.close();
 }, 30_000);

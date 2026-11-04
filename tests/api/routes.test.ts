@@ -104,9 +104,12 @@ describe("SSE summarize and ask", () => {
     const res = await api("/api/summarize?id=api-p1");
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const body = await res.text();
-    expect(body).toContain("data: ");
     expect(body).toContain("[DONE]");
-    expect(body).toContain("mock");
+    const frames = body.split("\n\n").filter((frame) => frame.startsWith("data: ") && !frame.includes("[DONE]"));
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    for (const frame of frames) {
+      expect(JSON.parse(frame.slice("data: ".length)).text.length).toBeGreaterThan(0);
+    }
   });
 
   test("ask streams a structured JSON delta", async () => {
@@ -232,7 +235,7 @@ describe("guards and fallbacks", () => {
     const data = await (await api("/api/queue")).json();
     expect(data.active).toBe(0);
     expect(data.queued).toBe(0);
-    expect(data.concurrency).toBeGreaterThan(0);
+    expect(data.concurrency).toBe(1);
   });
 
   test("empty search returns an empty bundle", async () => {
@@ -349,7 +352,7 @@ describe("/api/fetch pipeline", () => {
     expect(data.paper.source).toBe("fetch");
     expect(data.paper.link).toBe("https://example.com/hw1.pdf");
     expect(data.metaMiss).toBe(false);
-    expect(data.paper.title.length).toBeGreaterThan(0);
+    expect(data.paper.title).toBe("HW2 Fixture Paper");
   });
 
   test("502s when the upstream rejects the GET", async () => {
