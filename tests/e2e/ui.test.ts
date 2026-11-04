@@ -170,6 +170,69 @@ test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
   await page.close();
 }, 30_000);
 
+test.skipIf(!browser)("streams a cited answer into the chat pane", async () => {
+  const page = await browser!.newPage();
+  const libraryPaper = { ...paper, pageCount: 2 };
+  await page.route("**/api/search**", emptySearch);
+  await page.route("**/api/library", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [libraryPaper] }) })
+      : route.continue(),
+  );
+  await page.route("**/api/ask**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body:
+        'data: {"text":"First answer [p.1]"}\n\n' +
+        'data: {"text":" second answer [p.2]"}\n\n' +
+        "data: [DONE]\n\n",
+    }),
+  );
+  await page.goto(server.url);
+  await page.click("#tabLib");
+  await page.waitForSelector(".card");
+  await page.click(".card button.primary");
+  await page.fill("#askq", "What is it?");
+  await page.click("#askBtn");
+
+  await page.waitForFunction(() => {
+    const bubbles = [...document.querySelectorAll(".msg.model")];
+    return bubbles.some((b) => b.textContent?.includes("second answer [p.2]"));
+  });
+  const answer = page.locator(".msg.model").last();
+  expect(await answer.textContent()).toContain("First answer [p.1]");
+  expect(await answer.locator(".cite").count()).toBe(2);
+  expect(await page.locator("#askBtn").isEnabled()).toBe(true);
+
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("renders an uploaded PDF in the pdfrx pane", async () => {
+  const pdf = makePdf({ pages: ["PDF page one", "PDF page two"] });
+  const form = new FormData();
+  form.append("file", new File([pdf], "fixture.pdf", { type: "application/pdf" }));
+  const upload = await fetch(`${server.url}/api/upload`, { method: "POST", body: form });
+  expect(upload.status).toBe(201);
+
+  const page = await browser!.newPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.goto(server.url);
+  await page.click("#tabLib");
+  await page.waitForSelector(".card");
+  await page.click(".card button.primary");
+
+  await page.waitForFunction(
+    () => (document.getElementById("pdfOverlay") as HTMLElement | null)?.style.display === "none",
+    null,
+    { timeout: 45_000 },
+  );
+  expect(await page.locator("#pdfCanvasHost canvas").count()).toBeGreaterThan(0);
+  expect(await page.locator("#pageInfo").textContent()).toContain("1 / 2");
+
+  await page.close();
+}, 60_000);
+
 test.skipIf(!browser)("surfaces a search failure in the error bar", async () => {
   const page = await browser!.newPage();
   await page.route("**/api/search**", (route) => {

@@ -40,8 +40,8 @@ Never commit keys (`.gitignore` covers `.env`, `*.db`, `papers/`). Agent page ha
 
 ```bash
 bun install
-bun test --coverage        # 106 tests incl. 7 Playwright E2E
-bun test tests/e2e         # 7 Playwright tests (skipped if Chrome is absent)
+bun test --coverage        # 108 tests incl. 9 Playwright E2E
+bun test tests/e2e         # 9 Playwright tests (skipped if Chrome is absent)
 ```
 
 - `bunfig.toml` preloads `tests/setup.ts`, which points `DB_PATH`/`PAPERS_DIR` at a throwaway temp dir.
