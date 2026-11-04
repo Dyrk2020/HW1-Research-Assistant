@@ -116,14 +116,18 @@ test.skipIf(!browser)("saving a card sends the paper and flips the button", asyn
 test.skipIf(!browser)("upload flow selects the new paper", async () => {
   const page = await browser!.newPage();
   const uploaded = { ...paper, id: "up1", title: "Uploaded Paper", source: "upload", link: "https://example.com/u" };
+  let uploadMethod = "";
+  let uploadType = "";
   await page.route("**/api/search**", emptySearch);
-  await page.route("**/api/upload", (route) =>
-    route.fulfill({
+  await page.route("**/api/upload", (route) => {
+    uploadMethod = route.request().method();
+    uploadType = route.request().headers()["content-type"] ?? "";
+    return route.fulfill({
       status: 201,
       contentType: "application/json",
       body: JSON.stringify({ paper: uploaded, queue: { active: 0, queued: 0, concurrency: 1 } }),
-    }),
-  );
+    });
+  });
   await page.route("**/api/library", (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [uploaded] }) })
@@ -137,7 +141,10 @@ test.skipIf(!browser)("upload flow selects the new paper", async () => {
   });
   await page.click("#uploadBtn");
   await page.waitForFunction(() => document.getElementById("paperInfo")?.textContent?.includes("Uploaded Paper"));
+  await page.waitForFunction(() => document.getElementById("libCount")?.textContent === "library(1)");
 
+  expect(uploadMethod).toBe("POST");
+  expect(uploadType).toContain("multipart/form-data");
   expect(await page.locator("#libCount").textContent()).toBe("library(1)");
   expect(await page.locator("#msgs").textContent()).toContain("Opened");
 
@@ -147,14 +154,16 @@ test.skipIf(!browser)("upload flow selects the new paper", async () => {
 test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
   const page = await browser!.newPage();
   const fetched = { ...paper, id: "f1", title: "Fetched Paper", source: "fetch", link: "https://example.com/f.pdf" };
+  let fetchBody: { url?: string } = {};
   await page.route("**/api/search**", emptySearch);
-  await page.route("**/api/fetch", (route) =>
-    route.fulfill({
+  await page.route("**/api/fetch", (route) => {
+    fetchBody = route.request().postDataJSON();
+    return route.fulfill({
       status: 201,
       contentType: "application/json",
       body: JSON.stringify({ paper: fetched, queue: { active: 0, queued: 0, concurrency: 1 }, metaMiss: false }),
-    }),
-  );
+    });
+  });
   await page.route("**/api/library", (route) =>
     route.request().method() === "GET"
       ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [fetched] }) })
@@ -164,7 +173,9 @@ test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
   await page.fill("#fetchUrl", "https://example.com/f.pdf");
   await page.click("#fetchBtn");
   await page.waitForFunction(() => document.getElementById("paperInfo")?.textContent?.includes("Fetched Paper"));
+  await page.waitForFunction(() => document.getElementById("libCount")?.textContent === "library(1)");
 
+  expect(fetchBody.url).toBe("https://example.com/f.pdf");
   expect(await page.locator("#libCount").textContent()).toBe("library(1)");
 
   await page.close();
@@ -179,16 +190,21 @@ test.skipIf(!browser)("streams a cited answer into the chat pane", async () => {
       ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [libraryPaper] }) })
       : route.continue(),
   );
-  await page.route("**/api/ask**", (route) =>
-    route.fulfill({
+  let askQuery = "";
+  let askId = "";
+  await page.route("**/api/ask**", (route) => {
+    const u = new URL(route.request().url());
+    askQuery = u.searchParams.get("q") ?? "";
+    askId = u.searchParams.get("id") ?? "";
+    return route.fulfill({
       status: 200,
       contentType: "text/event-stream",
       body:
         'data: {"text":"First answer [p.1]"}\n\n' +
         'data: {"text":" second answer [p.2]"}\n\n' +
         "data: [DONE]\n\n",
-    }),
-  );
+    });
+  });
   await page.goto(server.url);
   await page.click("#tabLib");
   await page.waitForSelector(".card");
@@ -200,6 +216,8 @@ test.skipIf(!browser)("streams a cited answer into the chat pane", async () => {
     const bubbles = [...document.querySelectorAll(".msg.model")];
     return bubbles.some((b) => b.textContent?.includes("second answer [p.2]"));
   });
+  expect(askQuery).toBe("What is it?");
+  expect(askId).toBe("e1");
   const answer = page.locator(".msg.model").last();
   expect(await answer.textContent()).toContain("First answer [p.1]");
   expect(await answer.locator(".cite").count()).toBe(2);

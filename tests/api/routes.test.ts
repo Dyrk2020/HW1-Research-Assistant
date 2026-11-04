@@ -140,6 +140,7 @@ describe("SSE summarize and ask", () => {
       })) as typeof fetch;
     try {
       const res = await api("/api/ask?id=api-p1&q=hi");
+      expect(res.status).toBe(200);
       const body = await res.text();
       expect(body).toContain("Real point");
       expect(body).not.toContain("mock");
@@ -151,11 +152,18 @@ describe("SSE summarize and ask", () => {
 
 describe("settings", () => {
   test("reports modes without leaking key values", async () => {
-    const res = await api("/api/settings");
-    const data = await res.json();
-    expect(data.llm).toMatchObject({ keySet: false, mode: "proxy-managed" });
-    expect(data.exa).toMatchObject({ keySet: false, mode: "keyless-mcp" });
-    expect(JSON.stringify(data)).not.toContain("test-key");
+    const old = process.env.LLM_API_KEY;
+    process.env.LLM_API_KEY = "test-key";
+    try {
+      const res = await api("/api/settings");
+      const data = await res.json();
+      expect(data.llm).toMatchObject({ keySet: true, mode: "custom-key" });
+      expect(data.exa).toMatchObject({ keySet: false, mode: "keyless-mcp" });
+      expect(JSON.stringify(data)).not.toContain("test-key");
+    } finally {
+      if (old === undefined) delete process.env.LLM_API_KEY;
+      else process.env.LLM_API_KEY = old;
+    }
   });
 });
 
@@ -277,6 +285,8 @@ describe("guards and fallbacks", () => {
   });
 
   test("deletes a paper", async () => {
+    await postPaper(paper());
+    expect((await api("/api/read?id=api-p1")).status).toBe(200);
     const res = await api("/api/library/api-p1", { method: "DELETE" });
     expect(await res.json()).toEqual({ ok: true });
     expect((await api("/api/read?id=api-p1")).status).toBe(404);

@@ -14,9 +14,9 @@ const make = (title: string): Paper => ({
   createdAt: 0,
 });
 
-test.failing("BUG: titles that diverge after the twelfth token collapse into one", () => {
-  const partOne = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Part One";
-  const partTwo = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa Lambda Mu Part Two";
+test.failing("BUG: the 8-token head merges two distinct titles that share only that head", () => {
+  const partOne = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Kappa";
+  const partTwo = "Alpha Beta Gamma Delta Epsilon Zeta Eta Theta Iota Lambda";
 
   expect(dedupeKey(partOne)).not.toBe(dedupeKey(partTwo));
   expect(mergePapers([[make(partOne)], [make(partTwo)]])).toHaveLength(2);

@@ -267,18 +267,20 @@ describe("searchPapers", () => {
     stub({ "api.semanticscholar.org": () => new Promise<Response>(() => {}) });
     const realSetTimeout = globalThis.setTimeout;
     (globalThis as unknown as { setTimeout: typeof setTimeout }).setTimeout = ((fn: TimerHandler, ms?: number, ...args: unknown[]) => {
-      if (ms === 8000) {
-        if (typeof fn === "function") fn(...args);
-        return;
-      }
+      if (ms === 8000) return realSetTimeout(fn, 0, ...args);
       return realSetTimeout(fn, ms, ...args);
     }) as unknown as typeof setTimeout;
 
     try {
       const bundle = await searchPapers("timeout-q");
-      const status = bundle.sourceStatus.find((s) => s.source === "SemanticScholar");
-      expect(status?.status).toBe("limited");
-      expect(status?.notes).toContain("timeout");
+      const statuses = Object.fromEntries(bundle.sourceStatus.map((s) => [s.source, s.status]));
+      expect(statuses.SemanticScholar).toBe("limited");
+      expect(statuses.Exa).toBe("ok");
+      expect(statuses.OpenAlex).toBe("ok");
+      expect(statuses.arXiv).toBe("ok");
+      expect(bundle.papers.length).toBeGreaterThan(0);
+      const notes = bundle.sourceStatus.find((s) => s.source === "SemanticScholar")?.notes ?? [];
+      expect(notes).toContain("timeout");
     } finally {
       globalThis.setTimeout = realSetTimeout;
     }
@@ -296,17 +298,27 @@ describe("searchPapers", () => {
         n++;
         return json({ results });
       },
+      "api.semanticscholar.org": () => json({ data: [] }),
+      "api.openalex.org": () => json({ results: [] }),
+      "export.arxiv.org": () => text("<feed></feed>"),
     });
 
     try {
-      let firstId = "";
+      const ids: string[] = [];
+      const seen = new Set<string>();
       for (let i = 0; i < 1100; i++) {
         const bundle = await searchPapers(`seen-cap-${i}`);
-        if (!firstId) firstId = bundle.papers[0]!.id;
+        for (const p of bundle.papers) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
+          ids.push(p.id);
+        }
       }
 
-      expect(firstId).not.toBe("");
-      expect(getSeenPaper(firstId)).toBeUndefined();
+      expect(ids.length).toBeGreaterThan(2000);
+      const present = ids.filter((id) => getSeenPaper(id) !== undefined);
+      expect(present).toHaveLength(2000);
+      expect(present[0]).toBe(ids[ids.length - 2000]);
     } finally {
       delete process.env.EXA_API_KEY;
     }

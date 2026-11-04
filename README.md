@@ -54,7 +54,7 @@ bun test tests/e2e         # 9 Playwright tests (skipped if Chrome is absent)
 - Native/fallback PDF extraction is exercised by a generated one-page fixture (no repo asset required).
 - Upload queue: 3 concurrent → active 2 + 1 queued
 - Boot: `bun run` 0.22s ready
-- E2E: 5/5 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
+- E2E: 9/9 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
 
 ## Known gaps
 
