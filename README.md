@@ -40,12 +40,12 @@ Never commit keys (`.gitignore` covers `.env`, `*.db`, `papers/`). Agent page ha
 
 ```bash
 bun install
-bun test --coverage        # 108 tests incl. 9 Playwright E2E
-bun test tests/e2e         # 9 Playwright tests (skipped if Chrome is absent)
+bun test --coverage        # 145 tests incl. 15 Playwright E2E
+bun test tests/e2e         # 15 Playwright tests (skipped if Chrome is absent)
 ```
 
 - `bunfig.toml` preloads `tests/setup.ts`, which points `DB_PATH`/`PAPERS_DIR` at a throwaway temp dir.
-- Tests live in `tests/{unit,api,bugs,e2e}`; `tests/bugs` uses `test.failing` to pin known defects.
+- Tests live in `tests/{unit,api,bugs,e2e,integration}`; `tests/bugs` uses `test.failing` to pin known defects.
 - The server exports `handleRequest` and binds a port only under `import.meta.main`, so route tests run in-process.
 
 ## Measured
@@ -54,7 +54,7 @@ bun test tests/e2e         # 9 Playwright tests (skipped if Chrome is absent)
 - Native/fallback PDF extraction is exercised by a generated one-page fixture (no repo asset required).
 - Upload queue: 3 concurrent → active 2 + 1 queued
 - Boot: `bun run` 0.22s ready
-- E2E: 9/9 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
+- E2E: 15/15 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
 
 ## Known gaps
 

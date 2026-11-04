@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
-import { chromium, type Browser, type Route } from "playwright";
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+import { chromium, type Browser, type Page, type Route } from "playwright";
 import { makePdf } from "../helpers/pdf.ts";
 import { startServer, type TestServer } from "../helpers/server.ts";
 
@@ -8,6 +8,17 @@ let server: TestServer;
 // Chrome is optional: `bun test` must stay green on machines without it.
 const browser: Browser | null = await chromium.launch({ channel: "chrome", headless: true }).catch(() => null);
 if (!browser) console.warn("[e2e] Google Chrome unavailable; skipping Playwright tests");
+
+const activePages: Page[] = [];
+const openPage = async (): Promise<Page> => {
+  const page = await browser!.newPage();
+  activePages.push(page);
+  return page;
+};
+
+afterEach(async () => {
+  await Promise.all(activePages.splice(0).map((page) => page.close().catch(() => {})));
+});
 
 const paper = {
   id: "e1",
@@ -38,7 +49,7 @@ afterAll(async () => {
 }, 30_000);
 
 test.skipIf(!browser)("renders the three-pane shell", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", emptySearch);
   await page.goto(server.url);
 
@@ -51,7 +62,7 @@ test.skipIf(!browser)("renders the three-pane shell", async () => {
 }, 30_000);
 
 test.skipIf(!browser)("renders the clicked search's results", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", (route) => {
     const q = new URL(route.request().url()).searchParams.get("q");
     return route.fulfill(q === "agents" ? bundle([paper, { ...paper, id: "e2", title: "Second Paper" }]) : bundle([]));
@@ -70,7 +81,7 @@ test.skipIf(!browser)("renders the clicked search's results", async () => {
 }, 30_000);
 
 test.skipIf(!browser)("library tab loads saved papers", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", emptySearch);
   await page.route("**/api/library", (route) =>
     route.request().method() === "GET"
@@ -88,7 +99,7 @@ test.skipIf(!browser)("library tab loads saved papers", async () => {
 }, 30_000);
 
 test.skipIf(!browser)("saving a card sends the paper and flips the button", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", (route) => {
     const q = new URL(route.request().url()).searchParams.get("q");
     return route.fulfill(q === "agents" ? bundle([paper]) : bundle([]));
@@ -114,7 +125,7 @@ test.skipIf(!browser)("saving a card sends the paper and flips the button", asyn
 }, 30_000);
 
 test.skipIf(!browser)("upload flow selects the new paper", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   const uploaded = { ...paper, id: "up1", title: "Uploaded Paper", source: "upload", link: "https://example.com/u" };
   let uploadMethod = "";
   let uploadType = "";
@@ -152,7 +163,7 @@ test.skipIf(!browser)("upload flow selects the new paper", async () => {
 }, 30_000);
 
 test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   const fetched = { ...paper, id: "f1", title: "Fetched Paper", source: "fetch", link: "https://example.com/f.pdf" };
   let fetchBody: { url?: string } = {};
   await page.route("**/api/search**", emptySearch);
@@ -181,8 +192,106 @@ test.skipIf(!browser)("fetch flow selects the fetched paper", async () => {
   await page.close();
 }, 30_000);
 
+test.skipIf(!browser)("shows an empty library state", async () => {
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.route("**/api/library", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [] }) }),
+  );
+  await page.goto(server.url);
+  await page.click("#tabLib");
+  await page.waitForFunction(() => document.getElementById("libCount")?.textContent === "library(0)");
+
+  expect(await page.locator(".card").count()).toBe(0);
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("deletes a library paper and updates the count", async () => {
+  const created = { ...paper, id: "e2e-delete", title: "Delete Me" };
+  const res = await fetch(server.url + "/api/library", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(created),
+  });
+  expect(res.status).toBe(201);
+
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.goto(server.url);
+  await page.click("#tabLib");
+  await page.waitForSelector(".card");
+  const card = page.locator(".card", { hasText: "Delete Me" });
+  await card.locator("button", { hasText: "Delete" }).click();
+  await page.waitForFunction(() => ![...document.querySelectorAll(".card")].some((c) => c.textContent?.includes("Delete Me")));
+
+  expect(await page.locator(".card", { hasText: "Delete Me" }).count()).toBe(0);
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("shows the external-link overlay for a paper without a PDF", async () => {
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.route("**/api/library", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ papers: [paper] }) }),
+  );
+  await page.goto(server.url);
+  await page.click("#tabLib");
+  await page.waitForSelector(".card");
+  await page.click(".card button.primary");
+
+  await page.waitForFunction(() => document.getElementById("pdfOverlay")?.textContent?.includes("Preview blocked"));
+  expect(await page.locator("#pdfOverlay").textContent()).toContain("Preview blocked");
+  expect(await page.locator("#pdfOpen").isDisabled()).toBe(true);
+  expect(await page.locator("#msgs").textContent()).toContain("external link");
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("opens the settings panel without exposing key values", async () => {
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.goto(server.url);
+  await page.click("#keyBtn");
+  await page.waitForFunction(() => document.getElementById("keyStatus")?.textContent?.includes("llm:"));
+
+  expect(await page.locator("#keyPanel").isVisible()).toBe(true);
+  expect(await page.locator("#keyStatus").textContent()).toContain("exa:");
+  expect(await page.locator("#kLlm").getAttribute("type")).toBe("password");
+  expect(await page.locator("#kExa").getAttribute("type")).toBe("password");
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("toggles focus mode with the keyboard escape", async () => {
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.goto(server.url);
+  await page.click("#pdfFocus");
+  expect(await page.locator("body").evaluate((el) => el.classList.contains("focus-pdf"))).toBe(true);
+
+  await page.keyboard.press("Escape");
+  expect(await page.locator("body").evaluate((el) => el.classList.contains("focus-pdf"))).toBe(false);
+  await page.close();
+}, 30_000);
+
+test.skipIf(!browser)("uploads a PDF through the real UI and library", async () => {
+  const page = await openPage();
+  await page.route("**/api/search**", emptySearch);
+  await page.goto(server.url);
+  await page.setInputFiles("#file", {
+    name: "full-stack.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(makePdf({ pages: ["full stack upload"] })),
+  });
+  await page.click("#uploadBtn");
+  await page.waitForFunction(() => document.getElementById("libCount")?.textContent !== "library(0)");
+  await page.waitForSelector(".card");
+
+  expect(await page.locator("#msgs").textContent()).toContain("Opened");
+  expect(await page.locator(".card").count()).toBeGreaterThan(0);
+  await page.close();
+}, 45_000);
+
 test.skipIf(!browser)("streams a cited answer into the chat pane", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   const libraryPaper = { ...paper, pageCount: 2 };
   await page.route("**/api/search**", emptySearch);
   await page.route("**/api/library", (route) =>
@@ -233,7 +342,7 @@ test.skipIf(!browser)("renders an uploaded PDF in the pdfrx pane", async () => {
   const upload = await fetch(`${server.url}/api/upload`, { method: "POST", body: form });
   expect(upload.status).toBe(201);
 
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", emptySearch);
   await page.goto(server.url);
   await page.click("#tabLib");
@@ -252,7 +361,7 @@ test.skipIf(!browser)("renders an uploaded PDF in the pdfrx pane", async () => {
 }, 60_000);
 
 test.skipIf(!browser)("surfaces a search failure in the error bar", async () => {
-  const page = await browser!.newPage();
+  const page = await openPage();
   await page.route("**/api/search**", (route) => {
     const q = new URL(route.request().url()).searchParams.get("q");
     return q === "boom" ? route.fulfill({ status: 500, body: "boom" }) : route.fulfill(bundle([]));

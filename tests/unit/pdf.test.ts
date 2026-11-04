@@ -39,6 +39,24 @@ describe("probePdf", () => {
     expect(probe.extractionStatus).toBe("text_extracted");
   });
 
+  test("returns a safe probe for empty bytes", async () => {
+    const probe = await probePdf(new Uint8Array());
+    expect(probe).toEqual({
+      pageCount: null,
+      text: "",
+      extractionStatus: "no_text",
+      pagesWithoutText: [],
+      title: null,
+    });
+  });
+
+  test("does not throw on a truncated header", async () => {
+    const probe = await probePdf(new TextEncoder().encode("%PDF-1.4\n"));
+    expect(probe.pageCount).toBeNull();
+    expect(probe.text).toBe("");
+    expect(probe.extractionStatus).toBe("no_text");
+  });
+
   test("returns a safe probe for non-PDF bytes", async () => {
     const probe = await probePdf(new TextEncoder().encode("not a pdf"));
 

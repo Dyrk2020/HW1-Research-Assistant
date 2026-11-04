@@ -152,6 +152,25 @@ describe("searchPapers", () => {
     expect(bundle.papers.length).toBeGreaterThan(0);
   });
 
+  test("degrades malformed JSON to error and keeps the bundle", async () => {
+    stub({ "api.semanticscholar.org": () => text("{not json") });
+    const bundle = await searchPapers("bad-json-q");
+
+    expect(bundle.sourceStatus[1]).toMatchObject({ source: "SemanticScholar", status: "error" });
+    expect(bundle.papers.length).toBeGreaterThan(0);
+  });
+
+  test("degrades a thrown OpenAlex request to error", async () => {
+    stub({
+      "api.openalex.org": () => {
+        throw new Error("connection reset");
+      },
+    });
+    const bundle = await searchPapers("oa-throw-q");
+    expect(bundle.sourceStatus.find((s) => s.source === "OpenAlex")?.status).toBe("error");
+    expect(bundle.papers.length).toBeGreaterThan(0);
+  });
+
   test("degrades a 500 source to error and warns", async () => {
     stub({ "api.semanticscholar.org": () => json({}, 500) });
     const bundle = await searchPapers("ss-500-q");
@@ -340,6 +359,11 @@ describe("pure helpers", () => {
     expect(decodeInvertedIndex(undefined)).toBe("");
   });
 
+  test("caps dedupe keys at twelve tokens", () => {
+    const tokens = Array.from({ length: 14 }, (_, i) => `t${i}`);
+    expect(dedupeKey(tokens.join(" ")).split(" ")).toHaveLength(12);
+  });
+
   test("normalizes titles for dedupe", () => {
     expect(dedupeKey("Attention: Is All You Need!")).toBe("attention is all you need");
     expect(dedupeKey("A  B\tC")).toBe("a b c");
@@ -388,5 +412,10 @@ describe("lookupArxiv", () => {
   test("returns null on an HTTP error", async () => {
     stub({ "export.arxiv.org": () => text("", 500) });
     expect(await lookupArxiv("2401.00003")).toBeNull();
+  });
+
+  test("returns null for an arXiv feed without an entry", async () => {
+    stub({ "export.arxiv.org": () => text("<feed></feed>") });
+    expect(await lookupArxiv("2401.00005")).toBeNull();
   });
 });

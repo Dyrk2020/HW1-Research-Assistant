@@ -8,6 +8,11 @@ describe("isPublicHttpUrl", () => {
     expect(isPublicHttpUrl("https://purdue.brightspace.com/d2l/home")).toBe(true);
   });
 
+  test("accepts public URLs with ports, queries and fragments", () => {
+    expect(isPublicHttpUrl("https://example.com:8443/paper.pdf?x=1#p2")).toBe(true);
+    expect(isPublicHttpUrl("http://example.com")).toBe(true);
+  });
+
   test("rejects non-http schemes", () => {
     for (const u of ["ftp://example.com/x", "file:///etc/passwd", "javascript:alert(1)", "data:text/html,x"]) {
       expect(isPublicHttpUrl(u)).toBe(false);

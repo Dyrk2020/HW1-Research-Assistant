@@ -62,6 +62,22 @@ describe("library persistence", () => {
     expect(db.query("SELECT id FROM papers_fts WHERE id = ?").all("dbt-p2")).toHaveLength(0);
   });
 
+  test("round-trips a 100k abstract and empty optional fields", () => {
+    const abstract = "x".repeat(100_000);
+    savePaper({ ...base, id: "dbt-large", title: "Large Paper", abstract, authors: [], year: null });
+    const loaded = getPaper("dbt-large");
+    expect(loaded?.abstract.length).toBe(100_000);
+    expect(loaded?.authors).toEqual([]);
+    expect(loaded?.year).toBeNull();
+  });
+
+  test("keeps createdAt ordering stable across list calls", () => {
+    savePaper({ ...base, id: "dbt-order-a", title: "Order A", createdAt: 10 });
+    savePaper({ ...base, id: "dbt-order-b", title: "Order B", createdAt: 20 });
+    const ids = listPapers().map((p) => p.id).filter((id) => id.startsWith("dbt-order-"));
+    expect(ids).toEqual(["dbt-order-b", "dbt-order-a"]);
+  });
+
   test("json columns survive quotes, unicode and newlines", () => {
     savePaper({
       ...base,

@@ -15,8 +15,23 @@ test.failing("BUG: missing-field library body returns 500 instead of 400", async
   expect(res.status).toBe(400);
 });
 
-test.failing("BUG: malformed percent-encoding in a DELETE id crashes the handler", async () => {
-  const res = await handleRequest(new Request("http://test.local/api/library/%", { method: "DELETE" }));
+test.failing("BUG: malformed percent-encoding crashes instead of returning 400", async () => {
+  const results = await Promise.allSettled([
+    handleRequest(new Request("http://test.local/api/library/%", { method: "DELETE" })),
+    handleRequest(new Request("http://test.local/api/pdf/%")),
+  ]);
+  const statuses = results.map((r) => (r.status === "fulfilled" ? r.value.status : 500));
+  expect(statuses).toEqual([400, 400]);
+});
+
+test.failing("BUG: malformed JSON body is not rejected with 400", async () => {
+  const res = await handleRequest(
+    new Request("http://test.local/api/library", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    }),
+  );
   expect(res.status).toBe(400);
 });
 

@@ -19,3 +19,8 @@ test.failing("BUG: 0.0.0.0 must be blocked", () => {
 test.failing("BUG: IPv4-mapped IPv6 loopback must be blocked", () => {
   expect(isPublicHttpUrl("http://[::ffff:127.0.0.1]/")).toBe(false);
 });
+
+test.failing("BUG: IPv6 ULA and link-local ranges must be blocked", () => {
+  expect(isPublicHttpUrl("http://[fc00::1]/")).toBe(false);
+  expect(isPublicHttpUrl("http://[fe80::1]/")).toBe(false);
+});
