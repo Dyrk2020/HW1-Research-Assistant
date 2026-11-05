@@ -220,10 +220,13 @@ test.skipIf(!browser)("deletes a library paper and updates the count", async () 
   await page.goto(server.url);
   await page.click("#tabLib");
   await page.waitForSelector(".card");
+  const before = Number((await page.locator("#libCount").textContent())?.match(/\d+/)?.[0] ?? -1);
   const card = page.locator(".card", { hasText: "Delete Me" });
   await card.locator("button", { hasText: "Delete" }).click();
   await page.waitForFunction(() => ![...document.querySelectorAll(".card")].some((c) => c.textContent?.includes("Delete Me")));
 
+  const after = Number((await page.locator("#libCount").textContent())?.match(/\d+/)?.[0] ?? -1);
+  expect(after).toBe(before - 1);
   expect(await page.locator(".card", { hasText: "Delete Me" }).count()).toBe(0);
   await page.close();
 }, 30_000);
@@ -251,7 +254,7 @@ test.skipIf(!browser)("opens the settings panel without exposing key values", as
   await page.route("**/api/search**", emptySearch);
   await page.goto(server.url);
   await page.click("#keyBtn");
-  await page.waitForFunction(() => document.getElementById("keyStatus")?.textContent?.includes("llm:"));
+  await page.waitForFunction(() => document.getElementById("keyStatus")?.textContent?.includes("exa:"));
 
   expect(await page.locator("#keyPanel").isVisible()).toBe(true);
   expect(await page.locator("#keyStatus").textContent()).toContain("exa:");
@@ -282,9 +285,10 @@ test.skipIf(!browser)("uploads a PDF through the real UI and library", async () 
     buffer: Buffer.from(makePdf({ pages: ["full stack upload"] })),
   });
   await page.click("#uploadBtn");
-  await page.waitForFunction(() => document.getElementById("libCount")?.textContent !== "library(0)");
+  await page.waitForFunction(() => Boolean(document.getElementById("paperInfo")?.textContent?.trim()));
   await page.waitForSelector(".card");
 
+  expect(await page.locator("#paperInfo").textContent()).toMatch(/full[- ]stack/i);
   expect(await page.locator("#msgs").textContent()).toContain("Opened");
   expect(await page.locator(".card").count()).toBeGreaterThan(0);
   await page.close();

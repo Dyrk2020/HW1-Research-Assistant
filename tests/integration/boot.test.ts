@@ -28,16 +28,16 @@ test("boots as a real process and serves the queue", async () => {
     if (match) started.resolve(Number(match[1]));
   });
   child.on("exit", (code) => started.reject(new Error(`server exited early: ${code}\n${output}`)));
+  const exited = Promise.withResolvers<void>();
+  child.once("exit", () => exited.resolve());
 
-  const port = await started.promise;
   try {
+    const port = await started.promise;
     const res = await fetch(`http://127.0.0.1:${port}/api/queue`);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ active: 0, queued: 0, concurrency: 1 });
   } finally {
-    const exited = Promise.withResolvers<void>();
-    child.once("exit", () => exited.resolve());
-    child.kill("SIGTERM");
+    if (child.exitCode === null) child.kill("SIGKILL");
     await exited.promise;
     await rm(dir, { recursive: true, force: true });
   }

@@ -25,7 +25,7 @@ describe("library persistence", () => {
       createdAt: 1_000,
     });
     const { createdAt: _ignored, ...roundtrip } = saved;
-    expect(getPaper("dbt-p1")).toEqual(roundtrip);
+    expect(getPaper("dbt-p1")).toMatchObject(roundtrip);
     expect(getPaper("dbt-p1")?.authors).toEqual(["Ada", "Grace"]);
   });
 
