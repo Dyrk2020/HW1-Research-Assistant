@@ -1,0 +1,327 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { handleRequest } from "../../server.ts";
+
+// DB_PATH / PAPERS_DIR / LLM_BASE_URL are set once in tests/setup.ts.
+const REPO = join(import.meta.dir, "../..");
+
+const api = (path: string, init?: RequestInit) => handleRequest(new Request("http://test.local" + path, init));
+const postPaper = (body: unknown) =>
+  api("/api/library", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+const paper = (over: Record<string, unknown> = {}) => ({
+  id: "api-p1",
+  title: "API Paper",
+  authors: ["Ada"],
+  year: 2024,
+  abstract: "0123456789abcdefghijklmno",
+  link: "https://example.com/p1",
+  source: "test",
+  pdfPath: null,
+  ...over,
+});
+
+let uploadedId = "";
+
+describe("static shell", () => {
+  test("serves index.html", async () => {
+    const res = await api("/");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>HW1 Research Assistant</title>");
+  });
+});
+
+describe("library CRUD", () => {
+  test("lists papers", async () => {
+    const data = await (await api("/api/library")).json();
+    expect(Array.isArray(data.papers)).toBe(true);
+    expect(data.papers.some((p: { id: string }) => p.id === "api-p1")).toBe(false);
+  });
+
+  test("creates a paper and lists it", async () => {
+    const res = await postPaper(paper());
+    expect(res.status).toBe(201);
+    expect((await res.json()).paper.id).toBe("api-p1");
+
+    const data = await (await api("/api/library")).json();
+    expect(data.papers.map((p: { id: string }) => p.id)).toContain("api-p1");
+  });
+
+  test("upserts by id instead of duplicating", async () => {
+    await postPaper(paper({ title: "API Paper Revised" }));
+    const data = await (await api("/api/library")).json();
+    const matches = data.papers.filter((p: { id: string }) => p.id === "api-p1");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].title).toBe("API Paper Revised");
+  });
+});
+
+describe("paged read cursor", () => {
+  test("returns a bounded window and the next offset", async () => {
+    const data = await (await api("/api/read?id=api-p1&offset=0&limit=10")).json();
+    expect(data.text).toBe("0123456789");
+    expect(data.end).toBe(10);
+    expect(data.nextOffset).toBe(10);
+    expect(data.endOfDocument).toBe(false);
+    expect(data.totalChars).toBe(25);
+  });
+
+  test("ends the document on the final window", async () => {
+    const data = await (await api("/api/read?id=api-p1&offset=20&limit=10")).json();
+    expect(data.text).toBe("klmno");
+    expect(data.nextOffset).toBeNull();
+    expect(data.endOfDocument).toBe(true);
+  });
+
+  test("clamps a zero limit up to one character", async () => {
+    const data = await (await api("/api/read?id=api-p1&limit=0")).json();
+    expect(data.text).toBe("0");
+  });
+
+  test("passes extraction metadata through", async () => {
+    await postPaper(paper({ id: "api-meta", extractionStatus: "partial_text", pagesWithoutText: [3], pageCount: 5 }));
+    const data = await (await api("/api/read?id=api-meta")).json();
+    expect(data.extractionStatus).toBe("partial_text");
+    expect(data.pagesWithoutText).toEqual([3]);
+  });
+
+  test("404s for an unknown paper", async () => {
+    const res = await api("/api/read?id=missing");
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("SSE summarize and ask", () => {
+  test("summarize streams mock data and terminates with [DONE]", async () => {
+    const res = await api("/api/summarize?id=api-p1");
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const body = await res.text();
+    expect(body).toContain("data: ");
+    expect(body).toContain("[DONE]");
+    expect(body).toContain("mock");
+  });
+
+  test("ask streams a structured JSON delta", async () => {
+    const res = await api("/api/ask?id=api-p1&q=what%20is%20this");
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const body = await res.text();
+    expect(body).toContain("[DONE]");
+    expect(body).toContain("what is this");
+
+    const first = body.split("\n\n").find((frame) => frame.startsWith("data: ") && !frame.includes("[DONE]"));
+    expect(first).toBeDefined();
+    expect(JSON.parse(first!.slice("data: ".length)).text).toContain("mock");
+  });
+
+  test("ask 404s for an unknown paper", async () => {
+    const res = await api("/api/ask?id=missing&q=x");
+    expect(res.status).toBe(404);
+  });
+
+  test("streams real LLM output when the upstream answers", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: "1. Real point [p.1]" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    try {
+      const res = await api("/api/ask?id=api-p1&q=hi");
+      const body = await res.text();
+      expect(body).toContain("Real point");
+      expect(body).not.toContain("mock");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
+
+describe("settings", () => {
+  test("reports modes without leaking key values", async () => {
+    const res = await api("/api/settings");
+    const data = await res.json();
+    expect(data.llm).toMatchObject({ keySet: false, mode: "proxy-managed" });
+    expect(data.exa).toMatchObject({ keySet: false, mode: "keyless-mcp" });
+    expect(JSON.stringify(data)).not.toContain("test-key");
+  });
+});
+
+describe("upload pipeline", () => {
+  const upload = async () => {
+    const bytes = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
+    const fd = new FormData();
+    fd.append("file", new File([bytes], "hw1.pdf", { type: "application/pdf" }));
+    return api("/api/upload", { method: "POST", body: fd });
+  };
+
+  test("stores a PDF, extracts metadata and persists a copy", async () => {
+    const res = await upload();
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    uploadedId = data.paper.id;
+
+    expect(uploadedId).toMatch(/^pdf:[0-9a-f]{16}$/);
+    expect(data.paper.source).toBe("upload");
+    expect(["text_extracted", "partial_text"]).toContain(data.paper.extractionStatus);
+    expect(data.paper.pageCount).toBeGreaterThan(0);
+    expect(data.paper.title.length).toBeGreaterThan(0);
+    expect(existsSync(data.paper.pdfPath)).toBe(true);
+  });
+
+  test("dedupes the same bytes to one row", async () => {
+    const res = await upload();
+    const data = await res.json();
+    expect(data.paper.id).toBe(uploadedId);
+
+    const lib = await (await api("/api/library")).json();
+    expect(lib.papers.filter((p: { id: string }) => p.id === uploadedId)).toHaveLength(1);
+  });
+
+  test("serves the stored PDF bytes", async () => {
+    const res = await api(`/api/pdf/${encodeURIComponent(uploadedId)}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    const served = new Uint8Array(await res.arrayBuffer());
+    const original = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
+    expect(served.length).toBe(original.length);
+  });
+
+  test("404s for an unknown PDF", async () => {
+    const res = await api("/api/pdf/nope");
+    expect(res.status).toBe(404);
+  });
+
+  test("queues concurrent uploads and reports queue depth", async () => {
+    const bytes = new Uint8Array(await readFile(join(REPO, "hw1.pdf")));
+    const make = () => {
+      const fd = new FormData();
+      fd.append("file", new File([bytes], "hw1.pdf", { type: "application/pdf" }));
+      return api("/api/upload", { method: "POST", body: fd });
+    };
+
+    const responses = await Promise.all([make(), make(), make()]);
+    const bodies = await Promise.all(responses.map((r) => r.json()));
+
+    expect(bodies.every((b) => Boolean(b.paper.id))).toBe(true);
+    expect(bodies.some((b) => b.queue.queued > 0)).toBe(true);
+  });
+});
+
+describe("guards and fallbacks", () => {
+  test("blocks fetch of a loopback URL before any network call", async () => {
+    const res = await api("/api/fetch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "http://127.0.0.1:9/x.pdf" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("blocked");
+  });
+
+  test("reports the upload queue", async () => {
+    const data = await (await api("/api/queue")).json();
+    expect(data.active).toBe(0);
+    expect(data.queued).toBe(0);
+    expect(data.concurrency).toBeGreaterThan(0);
+  });
+
+  test("empty search returns an empty bundle", async () => {
+    expect(await (await api("/api/search?q=")).json()).toEqual({ papers: [], warnings: [], sourceStatus: [] });
+  });
+
+  test("unknown routes 404", async () => {
+    expect((await api("/api/nope")).status).toBe(404);
+    expect((await api("/pdfrx/nope.js")).status).toBe(404);
+  });
+
+  test("deletes a paper", async () => {
+    const res = await api("/api/library/api-p1", { method: "DELETE" });
+    expect(await res.json()).toEqual({ ok: true });
+    expect((await api("/api/read?id=api-p1")).status).toBe(404);
+  });
+});
+
+describe("pdf viewer assets", () => {
+  test("serves the pdfium wasm engine", async () => {
+    const res = await api("/pdfium/pdfium.wasm");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/wasm");
+  });
+
+  test("serves the pdfium worker", async () => {
+    const res = await api("/pdfium/pdfium_worker.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/javascript");
+  });
+
+  test("serves pdfrx modules from node_modules", async () => {
+    const res = await api("/pdfrx/viewer/dist/index.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/javascript");
+  });
+
+  test("rejects malformed pdfrx paths", async () => {
+    expect((await api("/pdfrx/a//b.js")).status).toBe(400);
+  });
+});
+
+describe("/api/fetch pipeline", () => {
+  const realFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  const postFetch = (url: string) =>
+    api("/api/fetch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+  test("rejects an oversized content-length before downloading", async () => {
+    globalThis.fetch = (async () =>
+      new Response(null, { status: 200, headers: { "content-length": String(80 * 1024 * 1024) } })) as typeof fetch;
+
+    const res = await postFetch("https://example.com/big.pdf");
+    expect(res.status).toBe(413);
+  });
+
+  test("rejects a non-PDF content type", async () => {
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      if (init?.method === "HEAD") throw new Error("HEAD blocked");
+      return new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } });
+    }) as typeof fetch;
+
+    const res = await postFetch("https://example.com/page");
+    expect(res.status).toBe(415);
+  });
+
+  test("downloads, extracts and stores a PDF", async () => {
+    const bytes = await readFile(join(REPO, "hw1.pdf"));
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      if (init?.method === "HEAD") throw new Error("HEAD blocked");
+      return new Response(bytes, { status: 200, headers: { "content-type": "application/pdf" } });
+    }) as typeof fetch;
+
+    const res = await postFetch("https://example.com/hw1.pdf");
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.paper.source).toBe("fetch");
+    expect(data.paper.link).toBe("https://example.com/hw1.pdf");
+    expect(data.metaMiss).toBe(false);
+    expect(data.paper.title.length).toBeGreaterThan(0);
+  });
+
+  test("502s when the upstream rejects the GET", async () => {
+    globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+      if (init?.method === "HEAD") throw new Error("HEAD blocked");
+      return new Response("nope", { status: 500 });
+    }) as typeof fetch;
+
+    const res = await postFetch("https://example.com/missing.pdf");
+    expect(res.status).toBe(502);
+  });
+});

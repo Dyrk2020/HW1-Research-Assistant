@@ -46,6 +46,7 @@ bun test tests/e2e         # 15 Playwright tests (skipped if Chrome is absent)
 
 - `bunfig.toml` preloads `tests/setup.ts`, which points `DB_PATH`/`PAPERS_DIR` at a throwaway temp dir.
 - Tests live in `tests/{unit,api,bugs,e2e,integration}`; `tests/bugs` uses `test.failing` to pin known defects.
+- `history/initial-70/` and `history/round1-101/` are read-only `.snapshot` archives of the 70- and 101-test batches; `bun test` does not execute them.
 - The server exports `handleRequest` and binds a port only under `import.meta.main`, so route tests run in-process.
 
 ## Measured

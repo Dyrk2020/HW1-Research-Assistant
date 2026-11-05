@@ -1,0 +1,82 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+
+const dbPath = `/tmp/hw2-db-${crypto.randomUUID()}.db`;
+process.env.DB_PATH = dbPath;
+
+// Dynamic import is required: lib/db.ts reads DB_PATH at module evaluation,
+// and static imports hoist before this assignment.
+const { db, deletePaper, getPaper, listPapers, savePaper } = await import("../../lib/db.ts");
+
+const base = {
+  authors: ["Ada", "Grace"],
+  year: 2024,
+  abstract: "generic abstract",
+  link: "https://example.com/p",
+  source: "test",
+  pdfPath: null,
+};
+
+afterAll(() => {
+  db.close();
+  for (const suffix of ["", "-wal", "-shm"]) {
+    try {
+      rmSync(dbPath + suffix);
+    } catch {
+      // already gone
+    }
+  }
+});
+
+describe("library persistence", () => {
+  test("save then get round-trips every field", () => {
+    const saved = savePaper({
+      ...base,
+      id: "p1",
+      title: "Paper One",
+      abstract: "quantum retrieval",
+      extractionStatus: "text_extracted",
+      pagesWithoutText: [2],
+      pageCount: 7,
+      createdAt: 1_000,
+    });
+    expect(getPaper("p1")).toEqual(saved);
+    expect(getPaper("p1")?.authors).toEqual(["Ada", "Grace"]);
+  });
+
+  test("missing id returns null", () => {
+    expect(getPaper("does-not-exist")).toBeNull();
+  });
+
+  test("list is newest first", () => {
+    savePaper({ ...base, id: "p2", title: "Paper Two", createdAt: 2_000 });
+    savePaper({ ...base, id: "p3", title: "Paper Three", createdAt: 3_000 });
+    expect(listPapers().map((p) => p.id).slice(0, 3)).toEqual(["p3", "p2", "p1"]);
+  });
+
+  test("insert-or-replace keeps one row and reindexes FTS", () => {
+    savePaper({ ...base, id: "p1", title: "Paper One Revised", abstract: "updated token", createdAt: 1_000 });
+    expect(listPapers().filter((p) => p.id === "p1")).toHaveLength(1);
+    expect(db.query("SELECT id FROM papers_fts WHERE papers_fts MATCH 'revised'").all()).toHaveLength(1);
+    expect(db.query("SELECT id FROM papers_fts WHERE papers_fts MATCH 'quantum'").all()).toHaveLength(0);
+  });
+
+  test("delete removes the row and its FTS entry", () => {
+    deletePaper("p2");
+    expect(getPaper("p2")).toBeNull();
+    expect(db.query("SELECT id FROM papers_fts WHERE id = ?").all("p2")).toHaveLength(0);
+  });
+
+  test("json columns survive quotes, unicode and newlines", () => {
+    savePaper({
+      ...base,
+      id: "p4",
+      title: 'Quotes "and" (parens)',
+      authors: ["O'Brien", "Åsa"],
+      abstract: "line\nbreak",
+      createdAt: 4_000,
+    });
+    expect(getPaper("p4")?.authors).toEqual(["O'Brien", "Åsa"]);
+    expect(getPaper("p4")?.abstract).toBe("line\nbreak");
+  });
+});
