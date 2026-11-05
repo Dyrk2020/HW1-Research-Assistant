@@ -44,8 +44,10 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
-  await server?.stop();
+  // Stop the server first: a wedged browser close must not orphan the listener.
+  const stopServer = server?.stop();
+  await browser?.close().catch(() => {});
+  await stopServer;
 }, 30_000);
 
 test.skipIf(!browser)("renders the three-pane shell", async () => {

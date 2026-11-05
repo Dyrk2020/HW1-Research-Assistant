@@ -57,6 +57,8 @@ describe("library persistence", () => {
   });
 
   test("delete removes the row and its FTS entry", () => {
+    savePaper({ ...base, id: "dbt-p2", title: "Paper Two", createdAt: 2_000 });
+    expect(getPaper("dbt-p2")).not.toBeNull();
     deletePaper("dbt-p2");
     expect(getPaper("dbt-p2")).toBeNull();
     expect(db.query("SELECT id FROM papers_fts WHERE id = ?").all("dbt-p2")).toHaveLength(0);
