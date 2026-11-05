@@ -40,12 +40,14 @@ Never commit keys (`.gitignore` covers `.env`, `*.db`, `papers/`). Agent page ha
 
 ```bash
 bun install
-bun test --coverage        # 145 tests incl. 15 Playwright E2E
+bun test --coverage        # default suite; live tests are skipped
 bun test tests/e2e         # 15 Playwright tests (skipped if Chrome is absent)
+bun run test:live          # LIVE=1 opt-in: real search + real LLM
 ```
 
 - `bunfig.toml` preloads `tests/setup.ts`, which points `DB_PATH`/`PAPERS_DIR` at a throwaway temp dir.
-- Tests live in `tests/{unit,api,bugs,e2e,integration}`; `tests/bugs` uses `test.failing` to pin known defects.
+- Tests live in `tests/{unit,api,bugs,e2e,integration,live}`; `tests/bugs` uses `test.failing` to pin known defects.
+- **Live tests (`tests/live`) are opt-in.** They are gated on `LIVE=1` (`test.skipIf`) and skipped otherwise, so the default `bun test` stays green, offline, and free. A full run reads `LIVE_LLM_BASE_URL`, `LIVE_LLM_API_KEY`, `LIVE_LLM_MODEL` (optional), and `LIVE_EXA_API_KEY` (optional) from the environment only — never commit keys. Because they call real providers and an LLM, they are nondeterministic and consume quota: keep `test:live` out of CI. Exact commands and assertions: `tests/live/README.md`.
 - `history/initial-70/` and `history/round1-101/` are read-only `.snapshot` archives of the 70- and 101-test batches; `bun test` does not execute them.
 - The server exports `handleRequest` and binds a port only under `import.meta.main`, so route tests run in-process.
 
