@@ -11,6 +11,16 @@ import { join } from "node:path";
 const root = tmpdir();
 for (const entry of readdirSync(root)) {
   if (!entry.startsWith("hw2-suite-")) continue;
+  const pid = Number(entry.slice("hw2-suite-".length));
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) continue;
+  let alive = false;
+  try {
+    process.kill(pid, 0);
+    alive = true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EPERM") alive = true;
+  }
+  if (alive) continue;
   const path = join(root, entry);
   try {
     if (Date.now() - statSync(path).mtimeMs > 60_000) rmSync(path, { recursive: true, force: true });
