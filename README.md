@@ -41,7 +41,7 @@ Never commit keys (`.gitignore` covers `.env`, `*.db`, `papers/`). Agent page ha
 ```bash
 bun install
 bun test --coverage        # default suite; live tests are skipped
-bun test tests/e2e         # 15 Playwright tests (skipped if Chrome is absent)
+bun test tests/e2e         # 33 Playwright tests (skipped if Chrome is absent)
 bun run test:live          # LIVE=1 opt-in: real search + real LLM
 ```
 
@@ -57,7 +57,7 @@ bun run test:live          # LIVE=1 opt-in: real search + real LLM
 - Native/fallback PDF extraction is exercised by a generated one-page fixture (no repo asset required).
 - Upload queue: 3 concurrent → active 2 + 1 queued
 - Boot: `bun run` 0.22s ready
-- E2E: 15/15 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
+- E2E: 33/33 Playwright flows (optional Chrome); UI review loops v1-v6 → `demo-final-submit.mp4`.
 
 ## Known gaps
 
