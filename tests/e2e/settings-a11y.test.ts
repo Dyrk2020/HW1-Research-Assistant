@@ -105,6 +105,16 @@ test.skipIf(!browser)("previews .env lines locally without writing settings", as
   for (const line of expected) expect(out).toContain(line);
   expect(await page.locator("#kOut").isVisible()).toBe(true);
 
+  // Clipboard write may resolve asynchronously; wait for the post-preview clear.
+  await page.waitForFunction(
+    () => {
+      const llm = document.getElementById("kLlm") as HTMLInputElement | null;
+      const exa = document.getElementById("kExa") as HTMLInputElement | null;
+      return llm?.value === "" && exa?.value === "";
+    },
+    null,
+    { timeout: 5_000 },
+  );
   // Secret inputs are wiped after the preview; non-secret prefs survive.
   expect(await page.locator("#kLlm").inputValue()).toBe("");
   expect(await page.locator("#kExa").inputValue()).toBe("");
